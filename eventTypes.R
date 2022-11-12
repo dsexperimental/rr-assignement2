@@ -96,20 +96,17 @@ aliasMap[["gustnado"]] <- "thunderstorm wind"
 aliasMap[["downburst"]] <- "thunderstorm wind"
 aliasMap[["microburst"]] <- "thunderstorm wind"
 
-aliasMap[["blowing dust"]] <- "dust storm"
-
 aliasMap[["non tstm wind"]] <- "high wind"
 aliasMap[["non-tstm wind"]] <- "high wind"
 
 aliasMap[["gusty wind"]] <- "strong wind"
 aliasMap[["gradient wind"]] <- "strong wind"
 aliasMap[["wind damage"]] <- "strong wind"
-aliasMap[["wind"]] <- "strong wind" ##apply as exact match only
+aliasMap[["wind"]] <- "strong wind"
 
+aliasMap[["blowing dust"]] <- "dust storm"
 
 aliasMap[["landspout"]] <- "tornado"
-
-aliasMap[["funnel"]] <- "funnel cloud"
 
 aliasMap[["landslide"]] <- "debris flow"
 aliasMap[["rock slide"]] <- "debris flow"

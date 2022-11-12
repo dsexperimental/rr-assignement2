@@ -100,13 +100,13 @@ dat$CEXP <- convertExpCol(dat$CROPDMGEXP)
 
 dat$DMG <- dat$PROPDMG * (10^dat$PEXP) + dat$CROPDMG * (10^dat$CEXP)
 
-datShort = getSubset(dat,.05)
+#datShort = getSubset(dat,.05)
 
 ##analyze based on data 1996 and later.
 ## long and short data
 dat96 <- dat[dat$BGN_DATE >= "1996-01-01",]
 
-datShort96 <- datShort[datShort$BGN_DATE >= "1996-01-01",]
+#datShort96 <- datShort[datShort$BGN_DATE >= "1996-01-01",]
 
 ##===========================
 ## totals
@@ -129,7 +129,7 @@ getEts <- function(regText) {
   str_detect(et,regex(regText,ignore_case=TRUE))
 }
 
-getEtfHelp <- function(df,regTexts) {
+getEtf <- function(df,regTexts) {
   origCols <- ncol(df)
   
   addCol <- function(regText) {
@@ -142,6 +142,8 @@ getEtfHelp <- function(df,regTexts) {
   
   df
 }
+
+
 
 #make a dataframe with a col for types and a col for exact match flag
 #other cols will tell if keywords are included
@@ -162,6 +164,8 @@ etf[(etf$total == 1)&(!etf$exact)&(etf$alias == "NULL"),"et"]
 etf[(etf$total == 2)&(!etf$exact)&(etf$alias == "NULL"),"et"]
 etf[(etf$total > 2)&(!etf$exact)&(etf$alias == "NULL"),"et"]
 
+############################################################
+
 
 ## other stuff
 
@@ -181,6 +185,25 @@ getUsage <- function(et,regText) {
 }
 
 getUsage(et,"Marine")
+
+##JUNK
+matchMat <- function(et,regTexts) {
+  nc <- length(regTexts)
+  nr <- length(et)
+  m = matrix(logical(nr*nc),nrow=nr,ncol=nc)
+  
+  addCol <- function(regText) {
+    str_detect(et,regex(regText,ignore_case=TRUE))
+  }
+  
+  m = sapply(regTexts,addCol)
+  
+  match1 <- apply(m,1,function(row) regTexts[row][1])
+  match2 <- apply(m,1,function(row) regTexts[row][2])
+  match3 <- apply(m,1,function(row) regTexts[row][3])
+  
+  cbind(match1,match2,match3)
+}
 
 
 ##===========================
