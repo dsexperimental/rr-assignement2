@@ -67,8 +67,16 @@ getSubset <- function(df,frac) {
 ## load file
 ##======================
 loadData <- function() {
+  source("colClasses.R")
+  
   ##load all data
-  allData <- read.csv("repdata_data_StormData.csv.bz2")
+  allData <- read.csv("repdata_data_StormData.csv.bz2",colClasses = colClasses)
+  
+  if(!setequal(colToKeep,names(allData))) {
+    #If this fails the data file must have changed columns
+    error("File not loadeed properly!")
+  }
+  
   ##return data with damage, fatalities or injuries
   filter(allData,(PROPDMG > 0) | (CROPDMG > 0) | (FATALITIES > 0) | (INJURIES > 0))
 }
@@ -78,8 +86,9 @@ dat <- loadData()
 ##=====================
 ## update columns and classes
 ##=====================
-dat$EVTYPE <- factor(dat$EVTYPE)
+
 dat$BGN_DATE <- mdy_hms(dat$BGN_DATE)
+dat$EVTYPE <- tolower(dat$EVTYPE)
 
 ##add a column for damage amounts
 
@@ -102,7 +111,7 @@ datShort96 <- datShort[datShort$BGN_DATE >= "1996-01-01",]
 ##===========================
 ## totals
 ##===========================
-et <- unique(dat$EVTYPE)
+et <- unique(dat96$EVTYPE)
 
 length(et)
 
@@ -112,38 +121,58 @@ length(et)
 ## APPENDIX
 ###########################################
 
-et <- as.character(unique(dat$EVTYPE))
 
-length(et)
-
+source("eventTypes.R")
 
 
 getEts <- function(regText) {
   str_detect(et,regex(regText,ignore_case=TRUE))
 }
 
-getEtf <- function(regTexts) {
-  etf <- data.frame(et = et)
+getEtfHelp <- function(df,regTexts) {
+  origCols <- ncol(df)
   
   addCol <- function(regText) {
-    etf[[regText]] <<- getEts(regText)
+    df[[regText]] <<- getEts(regText)
   }
   
   sapply(regTexts,addCol)
+
+  df$total <- apply(df[,(origCols+1):ncol(df)],1,sum)
   
-  etf$total <- apply(etf[,2:ncol(etf)],1,sum)
-  
-  etf
+  df
 }
 
+#make a dataframe with a col for types and a col for exact match flag
+#other cols will tell if keywords are included
+#and a col of total matched keywords
+etf <- data.frame(et = et)
+etf$exact <- et %in% lowerOffTypes
+etf$alias <- aliasMap[et]
+
+etf <- getEtf(etf,c(lowerOffTypes,aliases))
+
+##exact
+exactMatches <- sum(etf$exact)
+aliasMatches <- sum(etf$alias != "NULL")
+containsCount <- sum(etf$total > 0)
+##unmatched
+etf[etf$total == 0,"et"]
+etf[(etf$total == 1)&(!etf$exact)&(etf$alias == "NULL"),"et"]
+etf[(etf$total == 2)&(!etf$exact)&(etf$alias == "NULL"),"et"]
+etf[(etf$total > 2)&(!etf$exact)&(etf$alias == "NULL"),"et"]
 
 
+## other stuff
 
-etfM <- getEtf(keywords)
-etfO <- getEtf(offTypes)
+etf$et[etf$thunderstorm] 
 
-etfM[etfM$total == 0,"et"]
-etfO[etfO$total == 0,"et"]
+lowerUnmatched <- etf[etf$exact == FALSE,"et"]
+
+lowerPresentTypes <- etf[etf$exact == TRUE,"et"]
+
+lowerMissingTypes <- lowerOffTypes[!(lowerOffTypes %in% lowerPresentTypes)]
+lowerPresentTypes2 <- lowerOffTypes[lowerOffTypes %in% lowerPresentTypes]
 
 
 #scrap
@@ -157,6 +186,11 @@ getUsage(et,"Marine")
 ##===========================
 ## event types
 ##===========================
+
+getum <- function(regText) {
+ lowerUnmatched[str_detect(lowerUnmatched,regex(regText,ignore_case=TRUE))]
+}
+getum("thunderstorm")
 
 ##===========================
 ##look at data for inflation and other
