@@ -94,6 +94,7 @@ types <- stdString(officialTypes)
 aliasMap = list()
 aliasMap[["hurricane"]] <- "hurricane (typhoon)"
 aliasMap[["typhoon"]] <- "hurricane (typhoon)"
+aliasMap[["hurricane/typhoon"]] <- "hurricane (typhoon)"
 
 aliasMap[["tstm wind"]] <- "thunderstorm wind"
 aliasMap[["tstmw"]] <- "thunderstorm wind"
