@@ -1,6 +1,11 @@
 ##offcial weather type_sum
 
-offTypes <- c(
+## standardize string - lowercase and replace dash with space
+stdString <- function(textVector) {
+  str_replace(tolower(textVector),"-"," ")
+}
+
+officialTypes <- c(
   
   ##waves, tide
   "Tsunami",
@@ -82,7 +87,7 @@ offTypes <- c(
 )
 
 ##these are the official types ocnverted to lowercase
-lowerOffTypes <- tolower(offTypes)
+types <- stdString(officialTypes)
 
 ##here are some aliases for official types
 ##the alias is the NAME in the list, the offical value is the VALUE
@@ -216,7 +221,22 @@ aliasMap[["hazardous surf"]] <- "high surf"
 
 
 ##this is a vector with the aliases in it
-aliases = names(aliasMap)
+aliases <- names(aliasMap)
+
+
+## this is a list of types and aliases
+keywords <- c(types,aliases)
+
+
+##create mapping from keywords to types
+typeToType <- as.list(types)
+names(typeToType) <- types
+
+keywordToType <- c(typeToType,aliasMap)
+
+
+
+
 
 
   

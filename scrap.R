@@ -5,6 +5,9 @@ library(stringr) #reg exp
 
 set.seed(111)
 
+##import the event type info
+source("eventTypes.R")
+
 ## notes on data:
 ## https://www.ncdc.noaa.gov/stormevents/details.jsp
 ##
@@ -59,6 +62,24 @@ getSubset <- function(df,frac) {
   df[as.logical(rbinom(nrow(df),size=1,prob=frac)),]
 }
 
+## this function takes a vector of outerStrings and innerStrings and returns a matrix
+## telling if a given outerString contains a given innerString. The outerStrings represent
+## row indices and the innerStrings represent column indices
+getContainedIn <- function(outerStrings,innerStrings) {
+  inner_in_outer <- matrix(FALSE,nrow = length(outerStrings),ncol = length(innerStrings))
+  dimnames(inner_in_outer) <- list(outerStrings,innerStrings)
+  
+  setRow <- function(outerString) {
+    inner_in_outer[outerString,] <<- str_detect(outerString,regex(innerStrings,ignore_case=TRUE))
+  }
+  
+  sapply(outerStrings,setRow)
+  
+  inner_in_outer
+}
+
+
+
 ###########################################
 ## ANALYSIS
 ###########################################
@@ -88,13 +109,9 @@ dat <- loadData()
 ##=====================
 
 dat$BGN_DATE <- mdy_hms(dat$BGN_DATE)
-dat$EVTYPE <- tolower(dat$EVTYPE)
+dat$EVTYPE <- stdString(dat$EVTYPE)
 
 ##add a column for damage amounts
-
-##damge amount exponents
-#expString <- unique(tolower(c(unique(dat$PROPDMGEXP),unique(dat$CROPDMGEXP))))
-
 dat$PEXP <- convertExpCol(dat$PROPDMGEXP)
 dat$CEXP <- convertExpCol(dat$CROPDMGEXP)
 
@@ -111,9 +128,49 @@ dat96 <- dat[dat$BGN_DATE >= "1996-01-01",]
 ##===========================
 ## totals
 ##===========================
-et <- unique(dat96$EVTYPE)
+labels <- unique(dat96$EVTYPE)
 
-length(et)
+length(labels)
+
+k_in_l <- getContainedIn(labels,keywords) 
+k_in_k <- getContainedIn(keywords,keywords)
+
+adj_k_in_K <- k_in_k
+diag(adj_k_in_K) <- FALSE
+
+
+## this is the matrix telling if a given label contains a given keyword
+## keeping only the longer keyword for any of its keyword that contain another shorter keyword.
+fixed_k_in_l <- k_in_l & !as.logical(k_in_l %*% adj_k_in_K)
+
+##THIS IS JUST A TEST
+totals <- apply(fixed_k_in_l,1,sum)
+
+labels[totals == 0]
+labels[totals == 1]
+labels[totals == 2]
+labels[totals == 3]
+
+
+##get a list of keywords for each label
+getKeywords <- function(innerKeyFlags) {
+  keywords[innerKeyFlags]
+}
+labelKeywords <- apply(fixed_k_in_l,1,getKeywords)
+
+## get a single type for each label
+getKeywordTypes <- function(keywords) {
+  if(length(keywords) == 1) {
+    type <- keywordToType[[keywords]]
+  }
+  else {
+    type <- "other"
+  }
+  type
+}
+labelTypeMap <- lapply(labelKeywords,getKeywordTypes)
+
+
 
 
 
@@ -122,18 +179,16 @@ length(et)
 ###########################################
 
 
-source("eventTypes.R")
 
 
-getEts <- function(regText) {
-  str_detect(et,regex(regText,ignore_case=TRUE))
-}
 
-getEtf <- function(df,regTexts) {
+
+
+getEtf <- function(df,et,regTexts) {
   origCols <- ncol(df)
   
   addCol <- function(regText) {
-    df[[regText]] <<- getEts(regText)
+    df[[regText]] <<- str_detect(et,regex(regText,ignore_case=TRUE))
   }
   
   sapply(regTexts,addCol)
@@ -152,7 +207,7 @@ etf <- data.frame(et = et)
 etf$exact <- et %in% lowerOffTypes
 etf$alias <- aliasMap[et]
 
-etf <- getEtf(etf,c(lowerOffTypes,aliases))
+etf <- getEtf(etf,et,c(lowerOffTypes,aliases))
 
 ##exact
 exactMatches <- sum(etf$exact)
@@ -214,6 +269,14 @@ getum <- function(regText) {
  lowerUnmatched[str_detect(lowerUnmatched,regex(regText,ignore_case=TRUE))]
 }
 getum("thunderstorm")
+
+##==============================
+## bar plot
+##==============================
+
+##sample, needs refining
+xxx = runif(48,100)
+barplot(names.arg=offTypes,height=xxx,horiz=TRUE,las=1,cex.names=0.5)
 
 ##===========================
 ##look at data for inflation and other
