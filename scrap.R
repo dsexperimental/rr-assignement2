@@ -200,3 +200,15 @@ barplot(names.arg=fatalitiesDat$type,height=fatalitiesDat$fatalities,
 
 barplot(names.arg=injuriesDat$type,height=injuriesDat$injuries,
         horiz=TRUE,las=1,cex.names=0.5,log="x")
+
+## I think I want to make pie charts
+## the bar plot is just a repeat of the table and I can only
+## use three figures.
+## I should however limit the included values to significant contributors
+## and group the rest in "other"
+pie(costDat$cost,labels=costDat$type)
+
+pie(fatalitiesDat$fatalities,labels=fatalitiesDat$type)
+
+pie(injuriesDat$injuries,labels=injuriesDat$type)
+
