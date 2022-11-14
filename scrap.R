@@ -212,3 +212,12 @@ pie(fatalitiesDat$fatalities,labels=fatalitiesDat$type)
 
 pie(injuriesDat$injuries,labels=injuriesDat$type)
 
+## here is some quick and dirty code to add cost to label
+##I also do some fine tuning to optimize the labels visible
+pie(costDat$cost,labels=sprintf("%s $%.1fB",costDat$type,costDat$cost/1000000000))
+
+pie(fatalitiesDat$fatalities,
+    labels=sprintf("%s (%.0d)",fatalitiesDat$type,fatalitiesDat$fatalities),
+    init.angle = -30,cex=0.75)
+
+
