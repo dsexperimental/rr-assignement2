@@ -1,9 +1,6 @@
 library(dplyr)
-#library(ggplot2)
 library(lubridate)
 library(stringr)
-
-set.seed(111)
 
 ## notes on data:
 ## https://www.ncdc.noaa.gov/stormevents/details.jsp
@@ -225,12 +222,15 @@ getKeywords <- function(innerKeyFlags) {
 labelKeywords <- apply(fixed_k_in_l,1,getKeywords)
 
 ## Here we make a map from the labels to the type
-## if the label contains one keyword (type or alias), we associate it with that type
-## it the label contains 0 or multiple keywords, we record the type as the 
+## - if the label contains one keyword (type or alias), we associate it with that type
+## - if the label contains multiple keywords (type or alias), we associate it with
+##   the fist keyword, with the idea the more damaging factor may likely be placed first. 
+##   (alternately other weightings could be attemted)
+## - it the label contains 0 or multiple keywords, we record the type as the 
 ## value of the label enclosed in double arrows, to flag a failed match.
 getKeywordTypes <- function(keywords,label) {
-  if(length(keywords) == 1) {
-    type <- keywordToType[[keywords]]
+  if(length(keywords) > 0) {
+    type <- keywordToType[[keywords[1]]]
   }
   else {
     type <- sprintf("<<%s>>",label)
@@ -268,15 +268,15 @@ groupedDat <- dat %>% group_by(type)
 ##===========================
 
 fatalitiesDat <- groupedDat %>% 
-  summarise(fatalities = sum(FATALITIES)) %>% 
+  summarise(fatalities = sum(FATALITIES),count = length(FATALITIES)) %>% 
   arrange(desc(fatalities))
 
 injuriesDat <- groupedDat %>% 
-  summarise(injuries = sum(INJURIES)) %>% 
+  summarise(injuries = sum(INJURIES),count = length(INJURIES)) %>% 
   arrange(desc(injuries))
 
 costDat <- groupedDat %>% 
-  summarise(cost = sum(DMG)) %>% 
+  summarise(cost = sum(DMG),count = length(DMG)) %>% 
   arrange(desc(cost))
 
 
@@ -292,20 +292,22 @@ costDat <- groupedDat %>%
 ## Preprocessing for plotting
 ##=================================
 
-## this function takees a data frame with two columns - a factor and a number
+## this function takes a data frame with three columns
+## type (factor), value, count
 ## it removes all rows that are smaller than a given fraction and replaces these
 ## with an "other" row
 ## NOTE: there should not be an existing category named "other"
 addOtherCat <- function(fullDF,cutoffFrac) {
   #truncate the data frame
   totalValue <- sum(fullDF[[2]])
-  redDF <- filter(fullDF,fullDF[[2]] / totalValue > cutOffFrac)
+  totalCount <- sum(fullDF[[3]])
+  redDF <- filter(fullDF,fullDF[[2]] / totalValue >= cutOffFrac)
   
-  ##get the "other" value and add it
-  redTotalValue <- sum(redDF[[2]])
-  otherValue <- totalValue - redTotalValue
+  ##get the "other" value and count and append it
+  otherValue <- totalValue - sum(redDF[[2]])
+  otherCount <- totalCount - sum(redDF[[3]])
   levels(redDF[[1]]) <- c(levels(redDF[[1]]),"other")
-  newRow <- list("other",otherValue)
+  newRow <- list("other",otherValue,otherCount)
   names(newRow) <- names(redDF)
   redDF[length(redDF[[1]]) + 1,] <- newRow
   redDF
@@ -353,14 +355,66 @@ pie(redInjuriesDat$injuries,
 ## Appendix
 ################################################################################
 
-##other analysis functions
+##======================
+## Complete Damage Tables
+##======================
 
-sum(sapply(labelKeywords,length) == 0)
+## complete fatalities table
+print(fatalitiesDat,n=length(fatalitiesDat$type))
+
+## complete injuries table
+print(injuriesiesDat,n=length(injuriesiesDat$type))
+
+## complete cost table
+print(costDat,n=length(costDat$type))
+
+##=======================
+## Keyword matching tables
+##=======================
+
+## this is the count for a given label keyword
+labelKeywordCounts <- sapply(labelKeywords,length)
+
+## labels with no keyword matches
+names(labelKeywords[labelKeywordCounts == 0])
+
+## labels with 1 keyword match
+names(labelKeywords[labelKeywordCounts == 1])
+
+## labels with 2 keyword matches
+names(labelKeywords[labelKeywordCounts == 2])
+
+## labels with 3 or more keyword matches
+names(labelKeywords[labelKeywordCounts >= 3])
+
+
+##==========================
+## Type Identfication Data
+##==========================
+
+##NWS types, as listed from NWS
+print(officialTypes)
+
+##keywords
+typeAliases <- list()
+addTypeAlias <- function(type,alias) {
+  if(type %in% names(typeAliases)) {
+    typeAliases[[type]] <<- c(typeAliases[[type]],alias)
+  }
+  else {
+    typeAliases[[type]] <<- alias
+  }
+  
+}
+dummy <- mapply(addTypeAlias,aliasToType,names(aliasToType))
+
+print(typeAliases)
 
 
 ##===================
 ## This function generates the type files used in this analysis
 ##===================
+
 generateTypeFiles <- function() {
   
   # write the NWS types file
@@ -381,27 +435,29 @@ generateTypeFiles <- function() {
   
   #write the type alias file used in this analysis
   typeAliasJson <- '{
-    "cold/wind chill": ["cold", "wind chill", "windchill", "hypothermia/exposure", "hyperthermia/exposure"],
-    "debris flow": ["landslide", "rock slide", "mud slide", "mudslide", "landslump"],
-    "dense fog": ["fog"],
-    "dust storm": ["blowing dust"],
-    "extreme cold/wind chill": ["extreme cold", "extreme wind chill", "extreme windchill"],
-    "freezing fog": ["glaze"],
-    "frost/freeze": ["frost", "freeze"],
-    "heat": ["unseasonably warm", "warm weather"],
-    "heavy rain": ["torrential rainfall", "urban/sml stream fld", "hvy rain"],
-    "heavy snow": ["excessive snow"],
-    "high surf": ["heavy surf", "rough surf", "hazardous surf"],
-    "high wind": ["non tstm wind", "non-tstm wind"],
-    "hurricane (typhoon)": ["hurricane", "typhoon", "hurricane/typhoon"],
-    "lake-effect snow": ["lake effect snow"],
-    "storm surge/tide": ["storm surge"],
-    "strong wind": ["gusty wind", "gradient wind", "wind damage", "wind"],
-    "thunderstorm wind": ["tstm wind", "tstmw", "gustnado", "downburst", "microburst"],
-    "tornado": ["landspout"],
-    "wildfire": ["wild fire", "grass fire", "forest fire", "brush fire"],
-    "winter weather": ["freezing rain", "light snowfall", "snow and ice", "late season snow", "light snow", "snow", "freezing drizzle", "rain/snow", "snow squall", "mixed precipitation", "blowing snow", "wintry mix", "mixed precip", "snow squalls", "falling snow/ice"]
-  }'
+  "cold/wind chill": ["cold", "wind chill", "windchill", "hypothermia/exposure", "hyperthermia/exposure"],
+  "debris flow": ["landslide", "rock slide", "mud slide", "mudslide", "landslump"],
+  "dense fog": ["fog"],
+  "dust storm": ["blowing dust"],
+  "extreme cold/wind chill": ["extreme cold", "extreme wind chill", "extreme windchill"],
+  "freezing fog": ["glaze"],
+  "frost/freeze": ["frost", "freeze", "black ice"],
+  "flood": ["dam break"],
+  "flash flood": ["flash flood/flood", "flood/flash/flood"],
+  "heat": ["unseasonably warm", "warm weather"],
+  "heavy rain": ["torrential rainfall", "urban/sml stream fld", "hvy rain", "rain", "unseasonal rain"],
+  "heavy snow": ["excessive snow"],
+  "high surf": ["heavy surf", "rough surf", "hazardous surf"],
+  "high wind": ["non tstm wind", "non-tstm wind"],
+  "hurricane (typhoon)": ["hurricane", "typhoon", "hurricane/typhoon"],
+  "lake-effect snow": ["lake effect snow"],
+  "storm surge/tide": ["storm surge"],
+  "strong wind": ["gusty wind", "gradient wind", "wind damage", "wind"],
+  "thunderstorm wind": ["tstm wind", "tstmw", "gustnado", "downburst", "microburst"],
+  "tornado": ["landspout"],
+  "wildfire": ["wild fire", "grass fire", "forest fire", "brush fire"],
+  "winter weather": ["freezing rain", "light snowfall", "snow and ice", "late season snow", "light snow", "snow", "freezing drizzle", "rain/snow", "snow squall", "mixed precipitation", "blowing snow", "wintry mix", "mixed precip", "snow squalls", "falling snow/ice", "cold and snow", "ice roads", "icy roads", "ice on roads"]
+}'
   writeLines(typeAliasJson,"typeAliases.json")
 
 }
