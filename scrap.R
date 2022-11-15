@@ -175,49 +175,89 @@ labelTypeMap <- mapply(getKeywordTypes,labelKeywords,label=names(labelKeywords),
 ##add a type column, including the official types (in modified format) and "other"
 dat96$type <- factor(unlist(labelTypeMap[dat96$EVTYPE]))
 
+## get totals
+totalCost <- sum(dat96$DMG)
+totalFatalities <- sum(dat96$FATALITIES)
+totalInjuries <- sum(dat96$INJURIES)
+
+##===========================
+## group the data by type
+## and make an ordered data frame with the total by type
+## for each category
+##===========================
+groupedDat <- dat96 %>% group_by(type)
+
+fatalitiesDat <- groupedDat %>% 
+  summarise(fatalities = sum(FATALITIES)) %>% 
+  arrange(desc(fatalities))
+
+injuriesDat <- groupedDat %>% 
+  summarise(injuries = sum(INJURIES)) %>% 
+  arrange(desc(injuries))
+
+costDat <- groupedDat %>% 
+  summarise(cost = sum(DMG)) %>% 
+  arrange(desc(cost))
+
 ##=================================
 ## PLOTS
 ##=================================
 
-groupedDat <- dat96 %>% group_by(type)
+## we make a pie chart for each category of costs
+## we will cut off values that are too small and place them in an 
+## "other" type
 
-fatalitiesDat <- groupedDat %>% summarise(fatalities = sum(FATALITIES)) %>% 
-  filter(fatalities > 0) %>%
-  arrange(fatalities)
+## this function takees a data frame with two columns - a factor and a number
+## it removes all rows that are smaller than a given fraction and replaces these
+## with an "other" row
+## NOTE: there should not be an existing category named "other"
+addOtherCat <- function(fullDF,cutoffFrac) {
+  #truncate the data frame
+  totalValue <- sum(fullDF[[2]])
+  redDF <- filter(fullDF,fullDF[[2]] / totalValue > cutOffFrac)
+  
+  ##get the "other" value and add it
+  redTotalValue <- sum(redDF[[2]])
+  otherValue <- totalValue - redTotalValue
+  levels(redDF[[1]]) <- c(levels(redDF[[1]]),"other")
+  newRow <- list("other",otherValue)
+  names(newRow) <- names(redDF)
+  redDF[length(redDF[[1]]) + 1,] <- newRow
+  redDF
+}
 
-injuriesDat <- groupedDat %>% summarise(injuries = sum(INJURIES)) %>% 
-  filter(injuries > 0) %>%
-  arrange(injuries)
-costDat <- groupedDat %>% summarise(cost = sum(DMG)) %>% 
-  filter(cost > 0) %>%
-  arrange(cost)
+##this is the fractional value below which we wil place in the "other" type
+cutOffFrac <- 0.007
 
-barplot(names.arg=costDat$type,height=costDat$cost,
-        horiz=TRUE,las=1,cex.names=0.5,log="x")
+#data frames to plot
+redCostDat <- addOtherCat(costDat,cutOffFrac)
+redFatalitiesDat <- addOtherCat(fatalitiesDat,cutOffFrac)
+redInjuriesDat <- addOtherCat(injuriesDat,cutOffFrac)
 
-barplot(names.arg=fatalitiesDat$type,height=fatalitiesDat$fatalities,
-        horiz=TRUE,las=1,cex.names=0.5,log="x")
+## color palette
+pal <- colorRampPalette(palette.colors(n=8,palette = "Pastel 2"))
+otherColor <- rgb(230,230,230,maxColorValue=255)
 
-barplot(names.arg=injuriesDat$type,height=injuriesDat$injuries,
-        horiz=TRUE,las=1,cex.names=0.5,log="x")
+##plots
+pie(redCostDat$cost,
+    labels=sprintf("%s $%.1fB",redCostDat$type,redCostDat$cost/1000000000),
+    cex=0.75,init.angle=20,col=c(pal(length(redCostDat$type)-1),otherColor),
+    main="Dollar Cost by Storm Type",
+    sub = sprintf("Total Cost: $%.1fB",totalCost/1000000000))
 
-## I think I want to make pie charts
-## the bar plot is just a repeat of the table and I can only
-## use three figures.
-## I should however limit the included values to significant contributors
-## and group the rest in "other"
-pie(costDat$cost,labels=costDat$type)
+pie(redFatalitiesDat$fatalities,
+    labels=sprintf("%s (%.0d)",redFatalitiesDat$type,redFatalitiesDat$fatalities),
+    cex=0.75,init.angle=20,col=c(pal(length(redFatalitiesDat$type)-1),otherColor),
+    main="Fatalities by Storm Type",
+    sub = sprintf("Total Fatalities: %.0d",totalFatalities))
 
-pie(fatalitiesDat$fatalities,labels=fatalitiesDat$type)
+pie(redInjuriesDat$injuries,
+    labels=sprintf("%s (%.0d)",redInjuriesDat$type,redInjuriesDat$injuries),
+    cex=0.75,init.angle=20,col=c(pal(length(redInjuriesDat$type)-1),otherColor),
+    main="Injuries by Storm Type",
+    sub = sprintf("Total Injuries: %.0d",totalInjuries))
 
-pie(injuriesDat$injuries,labels=injuriesDat$type)
 
-## here is some quick and dirty code to add cost to label
-##I also do some fine tuning to optimize the labels visible
-pie(costDat$cost,labels=sprintf("%s $%.1fB",costDat$type,costDat$cost/1000000000))
 
-pie(fatalitiesDat$fatalities,
-    labels=sprintf("%s (%.0d)",fatalitiesDat$type,fatalitiesDat$fatalities),
-    init.angle = -30,cex=0.75)
 
 

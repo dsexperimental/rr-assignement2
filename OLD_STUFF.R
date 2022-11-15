@@ -1,4 +1,13 @@
 
+barplot(names.arg=costDat$type,height=costDat$cost,
+        horiz=TRUE,las=1,cex.names=0.5,log="x")
+
+barplot(names.arg=fatalitiesDat$type,height=fatalitiesDat$fatalities,
+        horiz=TRUE,las=1,cex.names=0.5,log="x")
+
+barplot(names.arg=injuriesDat$type,height=injuriesDat$injuries,
+        horiz=TRUE,las=1,cex.names=0.5,log="x")
+
 ###########################################
 ## APPENDIX
 ###########################################
