@@ -1,3 +1,70 @@
+library(jsonlite)
+
+install.packages("jsonlite")
+
+xxx <- toJSON(aliasMap,pretty=TRUE)
+
+yyy <- fromJSON(xxx)
+
+
+
+aliases <- names(aliasMap)
+
+
+##===============================
+## write types to file
+##===============================
+
+
+officialTypesJson <- toJSON(officialTypes,pretty=TRUE)
+
+writeLines(officialTypesJson,"officialTypes.json")
+
+
+##===============================
+## write aliasToType to a file
+##===============================
+## - convert to typeAliases
+
+## - write file
+
+## convert aliasMap to typeAliases
+typeAliases <- list()
+addAlias <- function(type,alias) {
+  if(type %in% names(typeAliases)) {
+    typeAliases[[type]] <<- c(typeAliases[[type]],alias)
+  }
+  else {
+    typeAliases[[type]] <<- alias
+  }
+  
+}
+mapply(addAlias,aliasMap,names(aliasMap))
+
+##alphabetize the type list by key
+typeAliases <- typeAliases[order(names(typeAliases))]
+
+
+## convert to pretty json
+typeAliasesJson <- toJSON(typeAliases,pretty=TRUE)
+
+writeLines(typeAliasesJson,"typeAliases.json")
+
+##===============================
+## read aliases
+##===============================
+
+typeAliases <- fromJSON("typeAliases.json")
+
+aliasToType <- list()
+addTypeAlias <- function(type,aliases) {
+  aliasToType[aliases] <<- type
+}
+mapply(addTypeAlias,names(typeAliases),typeAliases,SIMPLIFY=FALSE)
+
+#####################
+
+
 
 barplot(names.arg=costDat$type,height=costDat$cost,
         horiz=TRUE,las=1,cex.names=0.5,log="x")
@@ -13,9 +80,18 @@ barplot(names.arg=injuriesDat$type,height=injuriesDat$injuries,
 ###########################################
 
 
+## subset
+
+## this returns a randomly selected subset roughly a frac of original length
+getSubset <- function(df,frac) {
+  df[as.logical(rbinom(nrow(df),size=1,prob=frac)),]
+}
+
+#datShort = getSubset(dat,.05)
+#datShort96 <- datShort[datShort$BGN_DATE >= "1996-01-01",]
 
 
-
+###################################################
 
 
 getEtf <- function(df,et,regTexts) {

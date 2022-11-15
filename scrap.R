@@ -1,12 +1,9 @@
 library(dplyr)
-library(ggplot2)
+#library(ggplot2)
 library(lubridate)
-library(stringr) #reg exp
+library(stringr)
 
 set.seed(111)
-
-##import the event type info
-source("eventTypes.R")
 
 ## notes on data:
 ## https://www.ncdc.noaa.gov/stormevents/details.jsp
@@ -57,10 +54,11 @@ convertExpCol <- function(expStr) {
   expNum
 }
 
-## this returns a randomly selected subset roughly a frac of original length
-getSubset <- function(df,frac) {
-  df[as.logical(rbinom(nrow(df),size=1,prob=frac)),]
+## standardize string - lowercase and replace dash with space
+stdString <- function(textVector) {
+  str_replace(tolower(textVector),"-"," ")
 }
+
 
 ## this function takes a vector of outerStrings and innerStrings and returns a matrix
 ## telling if a given outerString contains a given innerString. The outerStrings represent
@@ -78,88 +76,158 @@ getContainedIn <- function(outerStrings,innerStrings) {
   inner_in_outer
 }
 
-
-
 ###########################################
-## ANALYSIS
+## Load the Process Data
 ###########################################
 
-##=======================
-## load file
 ##======================
-loadData <- function() {
-  source("colClasses.R")
-  
-  ##load all data
-  allData <- read.csv("repdata_data_StormData.csv.bz2",colClasses = colClasses)
-  
-  if(!setequal(colToKeep,names(allData))) {
-    #If this fails the data file must have changed columns
-    error("File not loadeed properly!")
-  }
-  
-  ##return data with damage, fatalities or injuries
-  filter(allData,(PROPDMG > 0) | (CROPDMG > 0) | (FATALITIES > 0) | (INJURIES > 0))
+## load the data file
+##======================
+
+##---------------
+## Column names/classes - to assist in reading and verifying file
+##---------------
+
+## This is a list of column names for the data
+colNames <- c("STATE__", "BGN_DATE", "BGN_TIME", "TIME_ZONE", "COUNTY", 
+              "COUNTYNAME", "STATE", "EVTYPE", "BGN_RANGE", "BGN_AZI",
+              "BGN_LOCATI", "END_DATE", "END_TIME", "COUNTY_END", "COUNTYENDN", 
+              "END_RANGE", "END_AZI", "END_LOCATI", "LENGTH", "WIDTH", "F",
+              "MAG", "FATALITIES", "INJURIES", "PROPDMG", "PROPDMGEXP", 
+              "CROPDMG", "CROPDMGEXP", "WFO", "STATEOFFIC", "ZONENAMES", 
+              "LATITUDE", "LONGITUDE", "LATITUDE_E", "LONGITUDE_", "REMARKS",
+              "REFNUM") 
+
+## place the column names you want to keep here
+colToKeep <- c("BGN_DATE","EVTYPE","FATALITIES","INJURIES","PROPDMG",
+               "PROPDMGEXP","CROPDMG","CROPDMGEXP","REMARKS")
+
+## place the column classes here, to help loading
+colToKeepClasses <- c("character","character","numeric","numeric","numeric",
+                      "character","numeric","character","character")
+
+## generate the col class vector
+colClasses <- rep("NULL",length(colNames))
+colClasses[match(colToKeep,colNames)] <- colToKeepClasses
+
+##-----------------
+## load the csv file
+##-----------------
+dat <- read.csv("repdata_data_StormData.csv.bz2",colClasses = colClasses)
+
+## SAFETY TEST: verify the format is as expected
+if(!identical(colToKeep,names(dat))) {
+  error("File not loaded properly! Format may have changed since origianl analysis")
 }
 
-dat <- loadData()
 
-##=====================
-## update columns and classes
-##=====================
+##-----------------
+## modify columns and classes
+##-----------------
 
+## convert timefrom character class
 dat$BGN_DATE <- mdy_hms(dat$BGN_DATE)
+
+## we will only use data from 1996 and newer
+dat <- filter(dat,BGN_DATE >= "1996-01-01")
+
+## the analysis only examines data that contains damage, fatalities or injuries
+dat <- filter(dat,((PROPDMG > 0) | (CROPDMG > 0) | (FATALITIES > 0) | (INJURIES > 0)) )
+
+## standardize the format of the type labels
 dat$EVTYPE <- stdString(dat$EVTYPE)
 
-##add a column for damage amounts
+## add a column for damage amounts
+## first convert character "exponent" columns to numerical values
 dat$PEXP <- convertExpCol(dat$PROPDMGEXP)
 dat$CEXP <- convertExpCol(dat$CROPDMGEXP)
-
 dat$DMG <- dat$PROPDMG * (10^dat$PEXP) + dat$CROPDMG * (10^dat$CEXP)
 
-#datShort = getSubset(dat,.05)
-
-##analyze based on data 1996 and later.
-## long and short data
-dat96 <- dat[dat$BGN_DATE >= "1996-01-01",]
-
-#datShort96 <- datShort[datShort$BGN_DATE >= "1996-01-01",]
-
 ##===========================
-## totals
+## load the types data
 ##===========================
-labels <- unique(dat96$EVTYPE)
 
-length(labels)
+##---------------------
+## NWS types file
+##---------------------
 
-k_in_l <- getContainedIn(labels,keywords) 
+## official types from NWS
+officialTypes <- fromJSON("officialTypes.json")
+
+## convert the official types to the working format: lowercase, "-" removed
+types <- stdString(officialTypes)
+
+##---------------------
+##load the type aliases
+##---------------------
+
+## type aliases
+## - list names: NWS types
+## - list values: aliases for these types 
+typeAliases <- fromJSON("typeAliases.json")
+
+## invert mapping to go from aliases to types
+aliasToType <- list()
+addTypeAlias <- function(type,aliases) {
+  aliasToType[aliases] <<- type
+}
+dummy <- mapply(addTypeAlias,names(typeAliases),typeAliases,SIMPLIFY=FALSE)
+
+##this is a vector with the aliases in it
+aliases <- names(aliasToType)
+
+## keywords - a list of types and aliases we will use to identify type from labels
+keywords <- c(types,aliases)
+
+##create mapping from keywords to types, to identify types from matched keywords
+typeToType <- as.list(types)
+names(typeToType) <- types
+keywordToType <- c(typeToType,aliasToType)
+
+##============================
+## identify types based on labeling of data
+##============================
+
+##vector of labels from data set
+labels <- unique(dat$EVTYPE)
+
+## k_in_l: logical matrix with an entry TRUE telling if a key (column index) is
+## in a label (row index)
+k_in_l <- getContainedIn(labels,keywords)
+
+## k_in_k: logical matrix with an entry TRUE telling if a keyword (column index) is
+## contained in a keyword (row index)
 k_in_k <- getContainedIn(keywords,keywords)
 
+## adj_k_in_k: this is the same as k_in_k except we remove the diagonal entries
+## which say a key contains itself
 adj_k_in_K <- k_in_k
 diag(adj_k_in_K) <- FALSE
 
-
-## this is the matrix telling if a given label contains a given keyword
-## keeping only the longer keyword for any of its keyword that contain another shorter keyword.
+## if a longer key contains a shorter key, any label that contains a longer
+## key will also contain the shorter key. We want to discard the shorter key
+## in this case. The equation below does this. Explanation:
+## - k_in_l[label,long key] * adj_k_in_k[long key,short key]: This is true if
+##   both a ("long") key contains a ("short") key and a label contains the 
+##   ("long") key.
+## - (k_in_l %*% adj_k_in_k): for a given label and key, this is true if any
+##   other keys both contain this key and are contained in this label
+## - k_in_l & !as.logical(k_in_l %*% adj_k_in_K): For any long key that is
+##   contained in a label, this clears the flag that states on "short" key contained
+##   in this "long" key is also contained in the label
 fixed_k_in_l <- k_in_l & !as.logical(k_in_l %*% adj_k_in_K)
 
-##THIS IS JUST A TEST
-totals <- apply(fixed_k_in_l,1,sum)
 
-labels[totals == 0]
-labels[totals == 1]
-labels[totals == 2]
-labels[totals == 3]
-
-
-##get a list of keywords for each label
+##get the list of keywords in each label
 getKeywords <- function(innerKeyFlags) {
   keywords[innerKeyFlags]
 }
 labelKeywords <- apply(fixed_k_in_l,1,getKeywords)
 
-## get a single type for each label
-
+## Here we make a map from the labels to the type
+## if the label contains one keyword (type or alias), we associate it with that type
+## it the label contains 0 or multiple keywords, we record the type as the 
+## value of the label enclosed in double arrows, to flag a failed match.
 getKeywordTypes <- function(keywords,label) {
   if(length(keywords) == 1) {
     type <- keywordToType[[keywords]]
@@ -169,23 +237,35 @@ getKeywordTypes <- function(keywords,label) {
   }
   type
 }
-labelTypeMap <- mapply(getKeywordTypes,labelKeywords,label=names(labelKeywords),SIMPLIFY=FALSE)
+labelToType <- mapply(getKeywordTypes,labelKeywords,label=names(labelKeywords),SIMPLIFY=FALSE)
 
 
-##add a type column, including the official types (in modified format) and "other"
-dat96$type <- factor(unlist(labelTypeMap[dat96$EVTYPE]))
+## we use our label to Type mapping to add a "type" column to our data.
+## this will either include a valid type name or the label enclosed in "<<" + ">>"
+dat$type <- factor(unlist(labelToType[dat$EVTYPE]))
+
+###########################################
+## Analyze Data
+###########################################
+
+##===============================
+## Get the total costs, fatalities and injuries
+##===============================
 
 ## get totals
-totalCost <- sum(dat96$DMG)
-totalFatalities <- sum(dat96$FATALITIES)
-totalInjuries <- sum(dat96$INJURIES)
+totalCost <- sum(dat$DMG)
+totalFatalities <- sum(dat$FATALITIES)
+totalInjuries <- sum(dat$INJURIES)
 
 ##===========================
 ## group the data by type
-## and make an ordered data frame with the total by type
-## for each category
 ##===========================
-groupedDat <- dat96 %>% group_by(type)
+groupedDat <- dat %>% group_by(type)
+
+##===========================
+## for each category (fatalities, injuries and damage), create a ordered
+## data frame of totals by type
+##===========================
 
 fatalitiesDat <- groupedDat %>% 
   summarise(fatalities = sum(FATALITIES)) %>% 
@@ -199,13 +279,18 @@ costDat <- groupedDat %>%
   summarise(cost = sum(DMG)) %>% 
   arrange(desc(cost))
 
-##=================================
-## PLOTS
-##=================================
+
+###########################################
+## Analyze Data
+###########################################
 
 ## we make a pie chart for each category of costs
 ## we will cut off values that are too small and place them in an 
 ## "other" type
+
+##=================================
+## Preprocessing for plotting
+##=================================
 
 ## this function takees a data frame with two columns - a factor and a number
 ## it removes all rows that are smaller than a given fraction and replaces these
@@ -229,14 +314,19 @@ addOtherCat <- function(fullDF,cutoffFrac) {
 ##this is the fractional value below which we wil place in the "other" type
 cutOffFrac <- 0.007
 
-#data frames to plot
+## color palette
+pal <- colorRampPalette(palette.colors(n=8,palette = "Pastel 2"))
+otherColor <- rgb(230,230,230,maxColorValue=255)
+
+# create modified data frames keeping only the major types
+## which are data readable from the pie chart
 redCostDat <- addOtherCat(costDat,cutOffFrac)
 redFatalitiesDat <- addOtherCat(fatalitiesDat,cutOffFrac)
 redInjuriesDat <- addOtherCat(injuriesDat,cutOffFrac)
 
-## color palette
-pal <- colorRampPalette(palette.colors(n=8,palette = "Pastel 2"))
-otherColor <- rgb(230,230,230,maxColorValue=255)
+##=================================
+## Plotting
+##=================================
 
 ##plots
 pie(redCostDat$cost,
@@ -259,5 +349,59 @@ pie(redInjuriesDat$injuries,
 
 
 
+################################################################################
+## Appendix
+################################################################################
+
+##other analysis functions
+
+sum(sapply(labelKeywords,length) == 0)
 
 
+##===================
+## This function generates the type files used in this analysis
+##===================
+generateTypeFiles <- function() {
+  
+  # write the NWS types file
+  typeJson <- '["Tsunami", "Storm Surge/Tide", "High Surf", "Seiche", 
+                "Rip Current", "Astronomical Low Tide", "Flash Flood", "Flood", 
+                "Coastal Flood", "Lakeshore Flood", "Heavy Rain", "Hail", 
+                "Lightning", "Hurricane (Typhoon)", "Tropical Depression", 
+                "Tropical Storm", "Thunderstorm Wind", "High Wind", "Strong Wind", 
+                "Dust Storm", "Tornado", "Funnel Cloud", "Waterspout", 
+                "Dust Devil", "Blizzard", "Winter Storm", "Heavy Snow", 
+                "Ice Storm", "Lake-Effect Snow", "Sleet", "Winter Weather", 
+                "Avalanche", "Extreme Cold/Wind Chill", "Frost/Freeze", 
+                "Cold/Wind Chill", "Excessive Heat", "Heat", "Dense Fog", 
+                "Freezing Fog", "Debris Flow", "Wildfire", "Dense Smoke", 
+                "Drought", "Volcanic Ash", "Marine Hail", "Marine High Wind", 
+                "Marine Strong Wind", "Marine Thunderstorm Wind"]'
+  writeLines(typeJson,"officialTypes.json")
+  
+  #write the type alias file used in this analysis
+  typeAliasJson <- '{
+    "cold/wind chill": ["cold", "wind chill", "windchill", "hypothermia/exposure", "hyperthermia/exposure"],
+    "debris flow": ["landslide", "rock slide", "mud slide", "mudslide", "landslump"],
+    "dense fog": ["fog"],
+    "dust storm": ["blowing dust"],
+    "extreme cold/wind chill": ["extreme cold", "extreme wind chill", "extreme windchill"],
+    "freezing fog": ["glaze"],
+    "frost/freeze": ["frost", "freeze"],
+    "heat": ["unseasonably warm", "warm weather"],
+    "heavy rain": ["torrential rainfall", "urban/sml stream fld", "hvy rain"],
+    "heavy snow": ["excessive snow"],
+    "high surf": ["heavy surf", "rough surf", "hazardous surf"],
+    "high wind": ["non tstm wind", "non-tstm wind"],
+    "hurricane (typhoon)": ["hurricane", "typhoon", "hurricane/typhoon"],
+    "lake-effect snow": ["lake effect snow"],
+    "storm surge/tide": ["storm surge"],
+    "strong wind": ["gusty wind", "gradient wind", "wind damage", "wind"],
+    "thunderstorm wind": ["tstm wind", "tstmw", "gustnado", "downburst", "microburst"],
+    "tornado": ["landspout"],
+    "wildfire": ["wild fire", "grass fire", "forest fire", "brush fire"],
+    "winter weather": ["freezing rain", "light snowfall", "snow and ice", "late season snow", "light snow", "snow", "freezing drizzle", "rain/snow", "snow squall", "mixed precipitation", "blowing snow", "wintry mix", "mixed precip", "snow squalls", "falling snow/ice"]
+  }'
+  writeLines(typeAliasJson,"typeAliases.json")
+
+}

@@ -1,3 +1,5 @@
+library(stringr)
+
 ##offcial weather type_sum
 
 ## standardize string - lowercase and replace dash with space
