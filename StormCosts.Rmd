@@ -22,7 +22,24 @@ library(jsonlite)
 
 # Synopsis
 
-Lorem Ispum
+We examine the storm data file provided by the United States National Weather 
+Service to find the storm types that do the most total yearly damage in terms
+of fatalities, injuries and dollar damage.
+
+The storm data file includes storm events from 1950 until 2011, in the version 
+of the data used. We limited the data used to 1996 and later since the data 
+after that point is more complete and is more standardized. 
+
+Even for this range, the type labeling for the data is inconsistent. The main 
+task in analyzing the file is interpreting the storm type. We used an 
+analysis to map the event type labels in the data set to the official storm
+type names used by the National Weather Service.
+
+We then summed the total fatalities, injuries and damage costs for each type and 
+averaged to estimate the yearly amounts.
+
+The storm type with the highest average yearly fatalities is "Excessive Heat", 
+injuries is "Tornado", and dollar damage is "Flood".
 
 # Data Processing
 
