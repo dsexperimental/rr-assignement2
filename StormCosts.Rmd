@@ -1,20 +1,38 @@
+---
+title: "Human and Economic Costs by Storm Type"
+author: "Dave Sutter"
+date: "2022-11-16"
+output: html_document
+---
+
+# NOTES
+ - Add the text!
+ - I currently show my results for the complete set of data. I should give an
+ average per year.
+ 
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
 library(dplyr)
 library(lubridate)
 library(stringr)
 library(jsonlite)
+```
 
-## notes on data:
-## https://www.ncdc.noaa.gov/stormevents/details.jsp
-##
-##  1950 - 1954 - only tornado
-##  1955 - 1995 - only tornado, thunderstorm wind, hail 
-##  1996 - present - 48 event types
+# Synopsis
 
-###########################################
-## FUNCTIONS
-###########################################
+Lorem Ispum
 
+# Data Processing
 
+we take data and process it.
+
+## Utility Functions
+
+The following are some simple functions that are used in the analysis.
+
+``` {r}
 ##=====================================
 ## This function converts exponent strings to numerica exponents
 ##=====================================
@@ -73,18 +91,14 @@ getContainedIn <- function(outerStrings,innerStrings) {
   
   inner_in_outer
 }
+```
 
-###########################################
-## Load the Process Data
-###########################################
+## Loading Data
 
-##======================
-## load the data file
-##======================
+Here we read in the data from the NWS storm data file. 
 
-##---------------
-## Column names/classes - to assist in reading and verifying file
-##---------------
+``` {r}
+
 
 ## This is a list of column names for the data
 colNames <- c("STATE__", "BGN_DATE", "BGN_TIME", "TIME_ZONE", "COUNTY", 
@@ -108,9 +122,7 @@ colToKeepClasses <- c("character","character","numeric","numeric","numeric",
 colClasses <- rep("NULL",length(colNames))
 colClasses[match(colToKeep,colNames)] <- colToKeepClasses
 
-##-----------------
 ## load the csv file
-##-----------------
 dat <- read.csv("repdata_data_StormData.csv.bz2",colClasses = colClasses)
 
 ## SAFETY TEST: verify the format is as expected
@@ -118,12 +130,13 @@ if(!identical(colToKeep,names(dat))) {
   error("File not loaded properly! Format may have changed since origianl analysis")
 }
 
+```
 
-##-----------------
-## modify columns and classes
-##-----------------
+Here we preprocess the storm data to get it in the desired form to start our analysis.
 
-## convert timefrom character class
+``` {r}
+
+## convert time from character class
 dat$BGN_DATE <- mdy_hms(dat$BGN_DATE)
 
 ## we will only use data from 1996 and newer
@@ -141,23 +154,25 @@ dat$PEXP <- convertExpCol(dat$PROPDMGEXP)
 dat$CEXP <- convertExpCol(dat$CROPDMGEXP)
 dat$DMG <- dat$PROPDMG * (10^dat$PEXP) + dat$CROPDMG * (10^dat$CEXP)
 
-##===========================
-## load the types data
-##===========================
+```
 
-##---------------------
-## NWS types file
-##---------------------
+Here we load a file containing the official storm types from the NWS. 
 
+This file adn be downloaded from ... However, it can also be generated from
+this code...
+
+``` {r}
 ## official types from NWS
 officialTypes <- fromJSON("officialTypes.json")
 
 ## convert the official types to the working format: lowercase, "-" removed
 types <- stdString(officialTypes)
+```
 
-##---------------------
-##load the type aliases
-##---------------------
+Here we load a "storm alias" file. It includes non-official names which may have
+been used to express the storm type.
+
+``` {r}
 
 ## type aliases
 ## - list names: NWS types
@@ -181,10 +196,16 @@ keywords <- c(types,aliases)
 typeToType <- as.list(types)
 names(typeToType) <- types
 keywordToType <- c(typeToType,aliasToType)
+```
 
-##============================
-## identify types based on labeling of data
-##============================
+## Cleaning the Storm Type Labels
+
+The type label for each event is often not one of the official storm types. 
+Here we attempt to standardize the event types.
+
+DESCRIBE HERE
+
+``` {r}
 
 ##vector of labels from data set
 labels <- unique(dat$EVTYPE)
@@ -244,11 +265,16 @@ labelToType <- mapply(getKeywordTypes,labelKeywords,label=names(labelKeywords),S
 ## we use our label to Type mapping to add a "type" column to our data.
 ## this will either include a valid type name or the label enclosed in "<<" + ">>"
 dat$type <- factor(unlist(labelToType[dat$EVTYPE]))
+```
 
-###########################################
-## Analyze Data
-###########################################
+# Data Analysis
+INTRO?
 
+Here we calculate the total costs for all storms in this period.
+
+SPECIFY THE PERIOD!!!
+
+``` {r}
 ##===============================
 ## Get the total costs, fatalities and injuries
 ##===============================
@@ -257,16 +283,21 @@ dat$type <- factor(unlist(labelToType[dat$EVTYPE]))
 totalCost <- sum(dat$DMG)
 totalFatalities <- sum(dat$FATALITIES)
 totalInjuries <- sum(dat$INJURIES)
+```
 
-##===========================
+Here we create a data frame each for fatalities, injuries and damage cost in 
+dollars. Each one contains the value for each type, ordered from maximum to
+minimum, and the number of events.
+
+NOTE - THIS IS FOR THE TOTAL PERIOD!
+
+``` {r}
+
 ## group the data by type
-##===========================
 groupedDat <- dat %>% group_by(type)
 
-##===========================
 ## for each category (fatalities, injuries and damage), create a ordered
 ## data frame of totals by type
-##===========================
 
 fatalitiesDat <- groupedDat %>% 
   summarise(fatalities = sum(FATALITIES),count = length(FATALITIES)) %>% 
@@ -279,16 +310,14 @@ injuriesDat <- groupedDat %>%
 costDat <- groupedDat %>% 
   summarise(cost = sum(DMG),count = length(DMG)) %>% 
   arrange(desc(cost))
+```
 
 
-###########################################
-## Analyze Data
-###########################################
+## Preprocessing of Results Data for Plots
 
-## we make a pie chart for each category of costs
-## we will cut off values that are too small and place them in an 
-## "other" type
+Here we do some preprocessing of the data to prepare it for plotting.
 
+``` {r}
 ##=================================
 ## Preprocessing for plotting
 ##=================================
@@ -326,99 +355,142 @@ otherColor <- rgb(230,230,230,maxColorValue=255)
 redCostDat <- addOtherCat(costDat,cutOffFrac)
 redFatalitiesDat <- addOtherCat(fatalitiesDat,cutOffFrac)
 redInjuriesDat <- addOtherCat(injuriesDat,cutOffFrac)
+```
 
-##=================================
-## Plotting
-##=================================
 
-##plots
-pie(redCostDat$cost,
-    labels=sprintf("%s $%.1fB",redCostDat$type,redCostDat$cost/1000000000),
-    cex=0.75,init.angle=20,col=c(pal(length(redCostDat$type)-1),otherColor),
-    main="Dollar Cost by Storm Type",
-    sub = sprintf("Total Cost: $%.1fB",totalCost/1000000000))
+# Results
 
+## Fatalities
+
+Here we show a plot of the storm types with the highest number of fatalities.
+
+``` {r, fig.height=6,fig.width=7}
 pie(redFatalitiesDat$fatalities,
     labels=sprintf("%s (%.0d)",redFatalitiesDat$type,redFatalitiesDat$fatalities),
-    cex=0.75,init.angle=20,col=c(pal(length(redFatalitiesDat$type)-1),otherColor),
+    cex=0.6,init.angle=20,col=c(pal(length(redFatalitiesDat$type)-1),otherColor),
     main="Fatalities by Storm Type",
     sub = sprintf("Total Fatalities: %.0d",totalFatalities))
+```
 
+## Injuries
+
+Here we show a plot of the storm types with the highest number of injuries.
+
+``` {r, fig.height=6,fig.width=7}
 pie(redInjuriesDat$injuries,
     labels=sprintf("%s (%.0d)",redInjuriesDat$type,redInjuriesDat$injuries),
     cex=0.75,init.angle=20,col=c(pal(length(redInjuriesDat$type)-1),otherColor),
     main="Injuries by Storm Type",
     sub = sprintf("Total Injuries: %.0d",totalInjuries))
+```
 
+## Damage Cost in Dollars
 
+Here we show a plot of the storm types with the greatest cost of damge.
 
-################################################################################
-## Appendix
-################################################################################
+``` {r, fig.height=6,fig.width=7}
+pie(redCostDat$cost,
+    labels=sprintf("%s $%.1fB",redCostDat$type,redCostDat$cost/1000000000),
+    cex=0.75,init.angle=20,col=c(pal(length(redCostDat$type)-1),otherColor),
+    main="Dollar Cost by Storm Type",
+    sub = sprintf("Total Cost: $%.1fB",totalCost/1000000000))
+```
 
-##======================
-## Complete Damage Tables
-##======================
+# Supplemental Data
 
+INTRO?
+
+## Fatalities by Storm Type
+
+Here we present the complete table of fatalities by storm type.
+
+``` {r}
 ## complete fatalities table
 print(fatalitiesDat,n=length(fatalitiesDat$type))
+```
 
+## Injuries by Storm Type
+
+Here we present the complete table of injuries by storm type.
+
+``` {r}
 ## complete injuries table
 print(injuriesDat,n=length(injuriesDat$type))
+```
 
+## Damage Costs by Storm Type
+
+Here we present the complete table of damage costs by storm type.
+
+``` {r}
 ## complete cost table
 print(costDat,n=length(costDat$type))
+```
 
-##=======================
-## Keyword matching tables
-##=======================
+## Keyword Matching Analysis
 
+DISCUSSION OF KEYWORD MATCHING
+
+Here we calculate a vector of keyword matching counts for each type label from
+the storm data file.
+
+``` {r}
 ## this is the count for a given label keyword
 labelKeywordCounts <- sapply(labelKeywords,length)
+```
 
+### Labels with no Keyword Matches
+
+``` {r}
 ## labels with no keyword matches
 names(labelKeywords[labelKeywordCounts == 0])
+```
 
+### Labels with One Keyword Match
+
+``` {r}
 ## labels with 1 keyword match
 names(labelKeywords[labelKeywordCounts == 1])
+```
 
+### Labels with Two Keyword Matches
+
+``` {r}
 ## labels with 2 keyword matches
 names(labelKeywords[labelKeywordCounts == 2])
+```
 
+### Labels with Three or More Keyword Matches
+
+``` {r}
 ## labels with 3 or more keyword matches
 names(labelKeywords[labelKeywordCounts >= 3])
+```
 
+## Data Files
 
-##==========================
-## Type Identfication Data
-##==========================
+NOTES ABOUT THE DATA FILES
+
+### NWS Storm Types
+
+TALK ABOUT THIS
+
+Here is a list of the official storm types.
+
+``` {r}
 
 ##NWS types, as listed from NWS
 print(officialTypes)
 
-##keywords
-typeAliases <- list()
-addTypeAlias <- function(type,alias) {
-  if(type %in% names(typeAliases)) {
-    typeAliases[[type]] <<- c(typeAliases[[type]],alias)
-  }
-  else {
-    typeAliases[[type]] <<- alias
-  }
-  
-}
-dummy <- mapply(addTypeAlias,aliasToType,names(aliasToType))
+```
 
-print(typeAliases)
+Here is a function that can be used to generate the storm type file and
+save it in the location used by this document.
 
-
-##===================
-## This function generates the type files used in this analysis
-##===================
-
-generateTypeFiles <- function() {
-  
-  # write the NWS types file
+``` {r}
+## This function creates the official types data file and places it in
+## the location used by this analysis.
+generateStormTypeFile <- function() {
   typeJson <- '["Tsunami", "Storm Surge/Tide", "High Surf", "Seiche", 
                 "Rip Current", "Astronomical Low Tide", "Flash Flood", "Flood", 
                 "Coastal Flood", "Lakeshore Flood", "Heavy Rain", "Hail", 
@@ -432,9 +504,28 @@ generateTypeFiles <- function() {
                 "Freezing Fog", "Debris Flow", "Wildfire", "Dense Smoke", 
                 "Drought", "Volcanic Ash", "Marine Hail", "Marine High Wind", 
                 "Marine Strong Wind", "Marine Thunderstorm Wind"]'
-  writeLines(typeJson,"officialTypes.json")
   
-  #write the type alias file used in this analysis
+  writeLines(typeJson,"officialTypes.json")
+}
+```
+
+### Storm Type Aliases
+
+TALK ABOUT THIS
+
+Here is a list of the storm type aliases used in this analysis.
+
+``` {r}
+print(typeAliases)
+```
+
+Here is a function that can be used to generate the type aliases file and
+save it in the location used by this document.
+
+``` {r}
+## This function creates the type alias data file and places it in
+## the location used by this analysis.
+generateTypeAliasFile <- function() {
   typeAliasJson <- '{
   "cold/wind chill": ["cold", "wind chill", "windchill", "hypothermia/exposure", "hyperthermia/exposure"],
   "debris flow": ["landslide", "rock slide", "mud slide", "mudslide", "landslump"],
@@ -460,5 +551,5 @@ generateTypeFiles <- function() {
   "winter weather": ["freezing rain", "light snowfall", "snow and ice", "late season snow", "light snow", "snow", "freezing drizzle", "rain/snow", "snow squall", "mixed precipitation", "blowing snow", "wintry mix", "mixed precip", "snow squalls", "falling snow/ice", "cold and snow", "ice roads", "icy roads", "ice on roads"]
 }'
   writeLines(typeAliasJson,"typeAliases.json")
-
 }
+```
