@@ -43,15 +43,35 @@ injuries is "Tornado", and dollar damage is "Flood".
 
 # Data Processing
 
-we take data and process it.
+We are processing storm data from the United States National Weather Service.
+
+## Source Data Used in Analysis
+
+National Weather Service Storm Data, 1950 to Nov, 2011:
+
+https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2
+
+National Weather Service Storm Data Documentation:
+
+https://d396qusza40orc.cloudfront.net/repdata%2Fpeer2_doc%2Fpd01016005curr.pdf
+
+National Climatic Data Center Storm Events FAQ:
+
+https://d396qusza40orc.cloudfront.net/repdata%2Fpeer2_doc%2FNCDC%20Storm%20Events-FAQ%20Page.pdf
+
+There is updated storm data available from the National Weather Service website:
+
+https://www.ncdc.noaa.gov/stormevents/details.jsp
 
 ## Utility Functions
 
-The following are some simple functions that are used in the analysis.
+The following are some simple functions that are used in the analysis. It is
+recommended that you skip this section and come back to it later for more
+information is desired
 
 ``` {r}
 ##=====================================
-## This function converts exponent strings to numerica exponents
+## This function converts exponent strings to numerical exponents
 ##=====================================
 ## This converts exponent string values that are
 ## - a number of metric exponents - see code for selection
@@ -78,7 +98,7 @@ convertExpCol <- function(expStr) {
   ## These are probably metric prefixes we left out
   singleLetterExpLeft <- sum(str_detect(expStr[is.na(expNum)],"[a-zA-Z]"))
   if(singleLetterExpLeft > 0) {
-    warning("There are unaccounted letter values for exponent! Investigate")
+    error("There are unaccounted letter values for exponent! Investigate")
   }
   ##--------------
   
@@ -112,10 +132,20 @@ getContainedIn <- function(outerStrings,innerStrings) {
 
 ## Loading Data
 
-Here we read in the data from the NWS storm data file. 
+Here we read in the data from the NWS storm data file.
+
+The storm file has been downloaded from the URL listed above and is present
+as the location specified in the code below.
+
+We added some additional code to specify the column classes and to exclude
+some unneeded columns, to limit the resources needed at load time.
+
+There is also a safety check to verify the format of the file is as expected.
+An error will be given if the format of the file does not match the expected
+format. If this is true, a number of names in the code will have to be udpated
+to run this document.
 
 ``` {r}
-
 
 ## This is a list of column names for the data
 colNames <- c("STATE__", "BGN_DATE", "BGN_TIME", "TIME_ZONE", "COUNTY", 
@@ -151,6 +181,22 @@ if(!identical(colToKeep,names(dat))) {
 
 Here we preprocess the storm data to get it in the desired form to start our analysis.
 
+- Convert the date column to a date object
+- Filter out data older than Jan 1, 1996. Before this time the data is less 
+complete and less standardized.
+- Filter out any partial year data corresponding to a partial year at the end
+of the file. We want to consider only full years since different times of the
+year will have a different concentration of storm types.
+- We standardize the type label (EVTYPE column) to be lower case and we remove
+any dashes, since these are not used reliably in the data.
+- We convert the property damage exponent and drop damage exponent to a 
+numerical value.
+- We add a column of total damage, with units of dollars.
+
+Rather than truncating any final partial year of data, we could impute values
+for events not included for the last year. We did not do this however because
+there seems go be adequate statistics without that partial year data.
+
 ``` {r}
 
 ## convert time from character class
@@ -170,6 +216,16 @@ dat$EVTYPE <- stdString(dat$EVTYPE)
 dat$PEXP <- convertExpCol(dat$PROPDMGEXP)
 dat$CEXP <- convertExpCol(dat$CROPDMGEXP)
 dat$DMG <- dat$PROPDMG * (10^dat$PEXP) + dat$CROPDMG * (10^dat$CEXP)
+
+## check if we want to truncate data at the end of the file for being a partial year
+## we will call (using the julian day of the year)
+PARTIAL_YEAR_CUTOFF <- 350
+maxDate <- max(dat$BGN_DATE)
+
+if(yday(maxDate) < PARTIAL_YEAR_CUTOFF) {
+  partialYear = year(maxDate)
+  dat <- filter(dat,year(BGN_DATE) < partialYear)
+}
 
 ```
 
