@@ -38,8 +38,8 @@ type names used by the National Weather Service.
 We then summed the total fatalities, injuries and damage costs for each type and 
 averaged to estimate the yearly amounts.
 
-The storm type with the highest average yearly fatalities is "Excessive Heat", 
-injuries is "Tornado", and dollar damage is "Flood".
+The storm type with the highest average yearly fatalities is _Excessive Heat_, 
+injuries is _Tornado_, and dollar damage is _Flood_.
 
 # Data Processing
 
@@ -181,7 +181,8 @@ if(!identical(colToKeep,names(dat))) {
 
 Here we preprocess the storm data to get it in the desired form to start our analysis.
 
-- Convert the date column to a date object
+- Convert the date column to a date object. For the analysis we consider the 
+time for the storm to be the begin date.
 - Filter out data older than Jan 1, 1996. Before this time the data is less 
 complete and less standardized.
 - Filter out any partial year data corresponding to a partial year at the end
@@ -193,9 +194,9 @@ any dashes, since these are not used reliably in the data.
 numerical value.
 - We add a column of total damage, with units of dollars.
 
-Rather than truncating any final partial year of data, we could impute values
-for events not included for the last year. We did not do this however because
-there seems go be adequate statistics without that partial year data.
+Rather than truncating any final partial year of data, we could instead impute 
+values for events not included for the last year. We did not do this however 
+because there seems to be adequate statistics without that partial year data.
 
 ``` {r}
 
@@ -229,28 +230,87 @@ if(yday(maxDate) < PARTIAL_YEAR_CUTOFF) {
 
 ```
 
-Here we load a file containing the official storm types from the NWS. 
+In the analysis we use the official storm types from the National Weather 
+Service. The values were obtained from the latest version of the Storm Data
+documentation, July 26, 2021, obtained at the URL below.
 
-This file adn be downloaded from ... However, it can also be generated from
-this code...
+https://www.nws.noaa.gov/directives/sym/pd01016005curr.pdf
+
+Throughout the analysis, we use modified version of the string names. All 
+letters are lowercase and the _dash_ character is removed. This is done in the
+function stdString() from the _Utility Function_ section above.
 
 ``` {r}
 ## official types from NWS
-officialTypes <- fromJSON("officialTypes.json")
+officialTypesJson <- '["Tsunami", "Storm Surge/Tide", "High Surf", "Seiche", 
+                "Rip Current", "Astronomical Low Tide", "Flash Flood", "Flood", 
+                "Coastal Flood", "Lakeshore Flood", "Heavy Rain", "Hail", 
+                "Lightning", "Hurricane (Typhoon)", "Tropical Depression", 
+                "Tropical Storm", "Thunderstorm Wind", "High Wind", "Strong Wind", 
+                "Dust Storm", "Tornado", "Funnel Cloud", "Waterspout", 
+                "Dust Devil", "Blizzard", "Winter Storm", "Heavy Snow", 
+                "Ice Storm", "Lake-Effect Snow", "Sleet", "Winter Weather", 
+                "Avalanche", "Extreme Cold/Wind Chill", "Frost/Freeze", 
+                "Cold/Wind Chill", "Excessive Heat", "Heat", "Dense Fog", 
+                "Freezing Fog", "Debris Flow", "Wildfire", "Dense Smoke", 
+                "Drought", "Volcanic Ash", "Marine Hail", "Marine High Wind", 
+                "Marine Strong Wind", "Marine Thunderstorm Wind"]'
+
+officialTypes <- fromJSON(officialTypesJson)
 
 ## convert the official types to the working format: lowercase, "-" removed
 types <- stdString(officialTypes)
 ```
 
-Here we load a "storm alias" file. It includes non-official names which may have
-been used to express the storm type.
+An important part of our analysis is to identify the storm type based on the
+labels from the storm data. To help doing this we use the official type names
+above but we also consider several aliases for these names. 
+
+The typeAliases are a mapping with the key being the type name and the value
+being an array of alias values.
+
+The aliases to use were determined by iteratively completing the analysis and
+seeing examining the values that were matched. We entered this data in the form
+of a json. It can be copied into a file and loaded from there rather than
+from the text entered below. This allows you to experiment with your own
+alias values.
+
+After reading in the typeAlias data, we convert into a mapping where the key is
+the alias and the value is the type name, since this is the format we will use
+in our later analysis.
+
+Finally, we also include a plain vector of the alias values.
 
 ``` {r}
 
 ## type aliases
 ## - list names: NWS types
 ## - list values: aliases for these types 
-typeAliases <- fromJSON("typeAliases.json")
+typeAliasJson <- '{
+  "cold/wind chill": ["cold", "wind chill", "windchill", "hypothermia/exposure", "hyperthermia/exposure"],
+  "debris flow": ["landslide", "rock slide", "mud slide", "mudslide", "landslump"],
+  "dense fog": ["fog"],
+  "dust storm": ["blowing dust"],
+  "extreme cold/wind chill": ["extreme cold", "extreme wind chill", "extreme windchill"],
+  "freezing fog": ["glaze"],
+  "frost/freeze": ["frost", "freeze", "black ice"],
+  "flood": ["dam break"],
+  "flash flood": ["flash flood/flood", "flood/flash/flood"],
+  "heat": ["unseasonably warm", "warm weather"],
+  "heavy rain": ["torrential rainfall", "urban/sml stream fld", "hvy rain", "rain", "unseasonal rain"],
+  "heavy snow": ["excessive snow"],
+  "high surf": ["heavy surf", "rough surf", "hazardous surf"],
+  "high wind": ["non tstm wind", "non-tstm wind"],
+  "hurricane (typhoon)": ["hurricane", "typhoon", "hurricane/typhoon"],
+  "lake-effect snow": ["lake effect snow"],
+  "storm surge/tide": ["storm surge"],
+  "strong wind": ["gusty wind", "gradient wind", "wind damage", "wind"],
+  "thunderstorm wind": ["tstm wind", "tstmw", "gustnado", "downburst", "microburst"],
+  "tornado": ["landspout"],
+  "wildfire": ["wild fire", "grass fire", "forest fire", "brush fire"],
+  "winter weather": ["freezing rain", "light snowfall", "snow and ice", "late season snow", "light snow", "snow", "freezing drizzle", "rain/snow", "snow squall", "mixed precipitation", "blowing snow", "wintry mix", "mixed precip", "snow squalls", "falling snow/ice", "cold and snow", "ice roads", "icy roads", "ice on roads"]
+}'
+typeAliases <- fromJSON(typeAliasesJson)
 
 ## invert mapping to go from aliases to types
 aliasToType <- list()
@@ -262,6 +322,15 @@ dummy <- mapply(addTypeAlias,names(typeAliases),typeAliases,SIMPLIFY=FALSE)
 ##this is a vector with the aliases in it
 aliases <- names(aliasToType)
 
+```
+
+For the analysis, we construct a _keywords_ vector. This includes the proper 
+type names and the alias name. 
+
+Along with this, we create a mapping where the key is the keyword (type names
+and aliases) and the value is the associated type name. 
+
+``` {r}
 ## keywords - a list of types and aliases we will use to identify type from labels
 keywords <- c(types,aliases)
 
@@ -273,10 +342,28 @@ keywordToType <- c(typeToType,aliasToType)
 
 ## Cleaning the Storm Type Labels
 
-The type label for each event is often not one of the official storm types. 
-Here we attempt to standardize the event types.
+Here we conduct an analysis to convert the labels on the storm data file into
+proper type names.
 
-DESCRIBE HERE
+We first find all keywords that are contained in each label. (Recall a keywords
+are composed of the proper type names and the type name aliases). 
+
+There are keywords that contain other keywords, such as _flash flood_ and _flood_.
+For cases like this, we only want to match the longer of the keyword, and not
+the keyword it contains. To account for this we remove any keyword _A_ from
+the list of keywords contained in the given label if a keyword _B_ is also 
+contained in the label and that keyword contains the keyword _A_.
+
+Once we have the keyword matches for a given label, we assign a type to the 
+label as follows:
+- If there is only one matching keyword, this determines the type
+- If there are multiple matching keywords, we take the first one __DOH!__ 
+- If there are no matching keywords, we create a keyword by enclosing 
+the label in double arrows, _<<_ and _>>_. We carry this data through
+our calculation and we can see if any of these form a significant portion of our
+data.
+
+# DOH! WE TAKE THE FIRST ONE BASED ON OUR ARBITRARY ORDERING!!! FIX THAT!!!
 
 ``` {r}
 
@@ -340,29 +427,36 @@ labelToType <- mapply(getKeywordTypes,labelKeywords,label=names(labelKeywords),S
 dat$type <- factor(unlist(labelToType[dat$EVTYPE]))
 ```
 
-# Data Analysis
-INTRO?
+## Summing the Storm Damage
 
-Here we calculate the total costs for all storms in this period.
-
-SPECIFY THE PERIOD!!!
+Here we calculate the yearly average costs for all storms over the period of
+the data.
 
 ``` {r}
 ##===============================
 ## Get the total costs, fatalities and injuries
 ##===============================
 
-## get totals
+## get total values
 totalCost <- sum(dat$DMG)
 totalFatalities <- sum(dat$FATALITIES)
 totalInjuries <- sum(dat$INJURIES)
+
+## get the number of years
+numberYears <- year(max(dat$BGN_DATE)) - year(min(dat$BGN_DATE)) + 1
+
+## get the yearly average values
+aveYearlyCost <- totalCost / numberYears
+aveYearlyFatalities <- totalFatalities / numberYears
+aveYearlyInjuries <- totalInjuries / numberYears
 ```
 
 Here we create a data frame each for fatalities, injuries and damage cost in 
-dollars. Each one contains the value for each type, ordered from maximum to
-minimum, and the number of events.
+dollars. Each one contains the average yearly value for each type, ordered from
+maximum to minimum, along with the average yearly number of events.
 
-NOTE - THIS IS FOR THE TOTAL PERIOD!
+Keep in mind we have previously filtered data to only consider events that have
+as least some fatalities, injuries or damage.
 
 ``` {r}
 
@@ -373,15 +467,15 @@ groupedDat <- dat %>% group_by(type)
 ## data frame of totals by type
 
 fatalitiesDat <- groupedDat %>% 
-  summarise(fatalities = sum(FATALITIES),count = length(FATALITIES)) %>% 
+  summarise(fatalities = sum(FATALITIES) / numberYears, count = length(FATALITIES) / numberYears) %>% 
   arrange(desc(fatalities))
 
 injuriesDat <- groupedDat %>% 
-  summarise(injuries = sum(INJURIES),count = length(INJURIES)) %>% 
+  summarise(injuries = sum(INJURIES) / numberYears, count = length(INJURIES) / numberYears) %>% 
   arrange(desc(injuries))
 
 costDat <- groupedDat %>% 
-  summarise(cost = sum(DMG),count = length(DMG)) %>% 
+  summarise(cost = sum(DMG) / numberYears, count = length(DMG) / numberYears) %>% 
   arrange(desc(cost))
 ```
 
@@ -389,6 +483,12 @@ costDat <- groupedDat %>%
 ## Preprocessing of Results Data for Plots
 
 Here we do some preprocessing of the data to prepare it for plotting.
+
+We will present the data in a pie chart so we want to group any types with
+small values into a single _other_ category.
+
+In this code block, we also define a color palette we will use with the pie
+charts.
 
 ``` {r}
 ##=================================
@@ -419,17 +519,16 @@ addOtherCat <- function(fullDF,cutoffFrac) {
 ##this is the fractional value below which we wil place in the "other" type
 cutOffFrac <- 0.007
 
-## color palette
-pal <- colorRampPalette(palette.colors(n=8,palette = "Pastel 2"))
-otherColor <- rgb(230,230,230,maxColorValue=255)
-
 # create modified data frames keeping only the major types
 ## which are data readable from the pie chart
 redCostDat <- addOtherCat(costDat,cutOffFrac)
 redFatalitiesDat <- addOtherCat(fatalitiesDat,cutOffFrac)
 redInjuriesDat <- addOtherCat(injuriesDat,cutOffFrac)
-```
 
+## color palette
+pal <- colorRampPalette(palette.colors(n=8,palette = "Pastel 2"))
+otherColor <- rgb(230,230,230,maxColorValue=255)
+```
 
 # Results
 
