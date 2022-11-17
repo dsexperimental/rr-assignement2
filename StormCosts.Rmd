@@ -6,9 +6,8 @@ output: html_document
 ---
 
 # NOTES
- - Add the text!
- - I currently show my results for the complete set of data. I should give an
- average per year.
+- Add a discussion of the type aliases in the supplemental data section
+- __DOH!__ IMplement a better version of the selectBestKeyword and then document it!
  
 
 ```{r setup, include=FALSE}
@@ -63,7 +62,7 @@ There is updated storm data available from the National Weather Service website:
 
 https://www.ncdc.noaa.gov/stormevents/details.jsp
 
-## Utility Functions
+## Utility Functions {#utilityFunctions}
 
 The following are some simple functions that are used in the analysis. It is
 recommended that you skip this section and come back to it later for more
@@ -127,6 +126,12 @@ getContainedIn <- function(outerStrings,innerStrings) {
   sapply(outerStrings,setRow)
   
   inner_in_outer
+}
+
+## returns the best keyword from the list of keywords in the label
+selectBestKeyword <- function(label,keywords) {
+  #for now, just take the first
+  keywords[1]
 }
 ```
 
@@ -238,7 +243,7 @@ https://www.nws.noaa.gov/directives/sym/pd01016005curr.pdf
 
 Throughout the analysis, we use modified version of the string names. All 
 letters are lowercase and the _dash_ character is removed. This is done in the
-function stdString() from the _Utility Function_ section above.
+function _stdString()_ from the section [Utility Functions](#utilityFunctions).
 
 ``` {r}
 ## official types from NWS
@@ -266,7 +271,7 @@ An important part of our analysis is to identify the storm type based on the
 labels from the storm data. To help doing this we use the official type names
 above but we also consider several aliases for these names. 
 
-The typeAliases are a mapping with the key being the type name and the value
+The _typeAliases_ are a mapping with the key being the type name and the value
 being an array of alias values.
 
 The aliases to use were determined by iteratively completing the analysis and
@@ -275,18 +280,21 @@ of a json. It can be copied into a file and loaded from there rather than
 from the text entered below. This allows you to experiment with your own
 alias values.
 
-After reading in the typeAlias data, we convert into a mapping where the key is
+After reading in the type alias data, we convert into a mapping where the key is
 the alias and the value is the type name, since this is the format we will use
 in our later analysis.
 
 Finally, we also include a plain vector of the alias values.
+
+In the document section [Supplemental Data](#supplementalData), we have some discussion of the
+alias values that were included and omitted.
 
 ``` {r}
 
 ## type aliases
 ## - list names: NWS types
 ## - list values: aliases for these types 
-typeAliasJson <- '{
+typeAliasesJson <- '{
   "cold/wind chill": ["cold", "wind chill", "windchill", "hypothermia/exposure", "hyperthermia/exposure"],
   "debris flow": ["landslide", "rock slide", "mud slide", "mudslide", "landslump"],
   "dense fog": ["fog"],
@@ -357,13 +365,15 @@ contained in the label and that keyword contains the keyword _A_.
 Once we have the keyword matches for a given label, we assign a type to the 
 label as follows:
 - If there is only one matching keyword, this determines the type
-- If there are multiple matching keywords, we take the first one __DOH!__ 
+- If there are multiple matching keywords, we select the best keyword using the
+function _selectBestKeyword()_ from the section 
+[Utility Functions](#utilityFunctions). This implementation is described below.
 - If there are no matching keywords, we create a keyword by enclosing 
 the label in double arrows, _<<_ and _>>_. We carry this data through
 our calculation and we can see if any of these form a significant portion of our
 data.
 
-# DOH! WE TAKE THE FIRST ONE BASED ON OUR ARBITRARY ORDERING!!! FIX THAT!!!
+# _selectBestKeyword()_ - This takes one of the types essentially at random. FIX!
 
 ``` {r}
 
@@ -411,8 +421,11 @@ labelKeywords <- apply(fixed_k_in_l,1,getKeywords)
 ## - it the label contains 0 or multiple keywords, we record the type as the 
 ## value of the label enclosed in double arrows, to flag a failed match.
 getKeywordTypes <- function(keywords,label) {
-  if(length(keywords) > 0) {
+  if(length(keywords) == 1) {
     type <- keywordToType[[keywords[1]]]
+  }
+  else if(length(keywords) > 1) {
+    type <- keywordToType[[selectBestKeyword(label,keywords)]]
   }
   else {
     type <- sprintf("<<%s>>",label)
@@ -538,10 +551,10 @@ Here we show a plot of the storm types with the highest number of fatalities.
 
 ``` {r, fig.height=6,fig.width=7}
 pie(redFatalitiesDat$fatalities,
-    labels=sprintf("%s (%.0d)",redFatalitiesDat$type,redFatalitiesDat$fatalities),
+    labels=sprintf("%s (%.0f)",redFatalitiesDat$type,redFatalitiesDat$fatalities),
     cex=0.6,init.angle=20,col=c(pal(length(redFatalitiesDat$type)-1),otherColor),
-    main="Fatalities by Storm Type",
-    sub = sprintf("Total Fatalities: %.0d",totalFatalities))
+    main="Yearly Average Fatalities by Storm Type",
+    sub = sprintf("Total Average Yearly Fatalities: %.0f",aveYearlyFatalities))
 ```
 
 ## Injuries
@@ -550,10 +563,10 @@ Here we show a plot of the storm types with the highest number of injuries.
 
 ``` {r, fig.height=6,fig.width=7}
 pie(redInjuriesDat$injuries,
-    labels=sprintf("%s (%.0d)",redInjuriesDat$type,redInjuriesDat$injuries),
+    labels=sprintf("%s (%.0f)",redInjuriesDat$type,redInjuriesDat$injuries),
     cex=0.75,init.angle=20,col=c(pal(length(redInjuriesDat$type)-1),otherColor),
-    main="Injuries by Storm Type",
-    sub = sprintf("Total Injuries: %.0d",totalInjuries))
+    main="Yearly Average Injuries by Storm Type",
+    sub = sprintf("Total Average Yearly Injuries: %.0f",aveYearlyInjuries))
 ```
 
 ## Damage Cost in Dollars
@@ -564,11 +577,11 @@ Here we show a plot of the storm types with the greatest cost of damge.
 pie(redCostDat$cost,
     labels=sprintf("%s $%.1fB",redCostDat$type,redCostDat$cost/1000000000),
     cex=0.75,init.angle=20,col=c(pal(length(redCostDat$type)-1),otherColor),
-    main="Dollar Cost by Storm Type",
-    sub = sprintf("Total Cost: $%.1fB",totalCost/1000000000))
+    main="Yearly Average Damage Cost in Dollars by Storm Type",
+    sub = sprintf("Total Average Yearly Cost: $%.1fB",aveYearlyCost/1000000000))
 ```
 
-# Supplemental Data
+# Supplemental Data {#supplementalData}
 
 INTRO?
 
@@ -601,9 +614,14 @@ print(costDat,n=length(costDat$type))
 
 ## Keyword Matching Analysis
 
-DISCUSSION OF KEYWORD MATCHING
+Here we present some of the event label matching results. This can be used when
+to check the aliases that were used, and see if some new aliases should be added
+or if some should be removed.
 
-Here we calculate a vector of keyword matching counts for each type label from
+We also include some commentary on the aliases we chose to include and not
+include in this section.
+
+First we calculate a vector of keyword matching counts for each type label from
 the storm data file.
 
 ``` {r}
@@ -639,15 +657,12 @@ names(labelKeywords[labelKeywordCounts == 2])
 names(labelKeywords[labelKeywordCounts >= 3])
 ```
 
-## Data Files
+## Type Data
 
-NOTES ABOUT THE DATA FILES
+Below we print the official storm types and the type aliases used in the 
+analysis.
 
 ### NWS Storm Types
-
-TALK ABOUT THIS
-
-Here is a list of the official storm types.
 
 ``` {r}
 
@@ -656,72 +671,8 @@ print(officialTypes)
 
 ```
 
-Here is a function that can be used to generate the storm type file and
-save it in the location used by this document.
-
-``` {r}
-## This function creates the official types data file and places it in
-## the location used by this analysis.
-generateStormTypeFile <- function() {
-  typeJson <- '["Tsunami", "Storm Surge/Tide", "High Surf", "Seiche", 
-                "Rip Current", "Astronomical Low Tide", "Flash Flood", "Flood", 
-                "Coastal Flood", "Lakeshore Flood", "Heavy Rain", "Hail", 
-                "Lightning", "Hurricane (Typhoon)", "Tropical Depression", 
-                "Tropical Storm", "Thunderstorm Wind", "High Wind", "Strong Wind", 
-                "Dust Storm", "Tornado", "Funnel Cloud", "Waterspout", 
-                "Dust Devil", "Blizzard", "Winter Storm", "Heavy Snow", 
-                "Ice Storm", "Lake-Effect Snow", "Sleet", "Winter Weather", 
-                "Avalanche", "Extreme Cold/Wind Chill", "Frost/Freeze", 
-                "Cold/Wind Chill", "Excessive Heat", "Heat", "Dense Fog", 
-                "Freezing Fog", "Debris Flow", "Wildfire", "Dense Smoke", 
-                "Drought", "Volcanic Ash", "Marine Hail", "Marine High Wind", 
-                "Marine Strong Wind", "Marine Thunderstorm Wind"]'
-  
-  writeLines(typeJson,"officialTypes.json")
-}
-```
-
 ### Storm Type Aliases
-
-TALK ABOUT THIS
-
-Here is a list of the storm type aliases used in this analysis.
 
 ``` {r}
 print(typeAliases)
-```
-
-Here is a function that can be used to generate the type aliases file and
-save it in the location used by this document.
-
-``` {r}
-## This function creates the type alias data file and places it in
-## the location used by this analysis.
-generateTypeAliasFile <- function() {
-  typeAliasJson <- '{
-  "cold/wind chill": ["cold", "wind chill", "windchill", "hypothermia/exposure", "hyperthermia/exposure"],
-  "debris flow": ["landslide", "rock slide", "mud slide", "mudslide", "landslump"],
-  "dense fog": ["fog"],
-  "dust storm": ["blowing dust"],
-  "extreme cold/wind chill": ["extreme cold", "extreme wind chill", "extreme windchill"],
-  "freezing fog": ["glaze"],
-  "frost/freeze": ["frost", "freeze", "black ice"],
-  "flood": ["dam break"],
-  "flash flood": ["flash flood/flood", "flood/flash/flood"],
-  "heat": ["unseasonably warm", "warm weather"],
-  "heavy rain": ["torrential rainfall", "urban/sml stream fld", "hvy rain", "rain", "unseasonal rain"],
-  "heavy snow": ["excessive snow"],
-  "high surf": ["heavy surf", "rough surf", "hazardous surf"],
-  "high wind": ["non tstm wind", "non-tstm wind"],
-  "hurricane (typhoon)": ["hurricane", "typhoon", "hurricane/typhoon"],
-  "lake-effect snow": ["lake effect snow"],
-  "storm surge/tide": ["storm surge"],
-  "strong wind": ["gusty wind", "gradient wind", "wind damage", "wind"],
-  "thunderstorm wind": ["tstm wind", "tstmw", "gustnado", "downburst", "microburst"],
-  "tornado": ["landspout"],
-  "wildfire": ["wild fire", "grass fire", "forest fire", "brush fire"],
-  "winter weather": ["freezing rain", "light snowfall", "snow and ice", "late season snow", "light snow", "snow", "freezing drizzle", "rain/snow", "snow squall", "mixed precipitation", "blowing snow", "wintry mix", "mixed precip", "snow squalls", "falling snow/ice", "cold and snow", "ice roads", "icy roads", "ice on roads"]
-}'
-  writeLines(typeAliasJson,"typeAliases.json")
-}
 ```
