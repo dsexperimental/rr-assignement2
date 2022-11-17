@@ -7,7 +7,6 @@ output: html_document
 
 # NOTES
 - Add a discussion of the type aliases in the supplemental data section
-- __DOH!__ IMplement a better version of the selectBestKeyword and then document it!
  
 
 ```{r setup, include=FALSE}
@@ -126,12 +125,6 @@ getContainedIn <- function(outerStrings,innerStrings) {
   sapply(outerStrings,setRow)
   
   inner_in_outer
-}
-
-## returns the best keyword from the list of keywords in the label
-selectBestKeyword <- function(label,keywords) {
-  #for now, just take the first
-  keywords[1]
 }
 ```
 
@@ -307,13 +300,13 @@ typeAliasesJson <- '{
   "heat": ["unseasonably warm", "warm weather"],
   "heavy rain": ["torrential rainfall", "urban/sml stream fld", "hvy rain", "rain", "unseasonal rain"],
   "heavy snow": ["excessive snow"],
-  "high surf": ["heavy surf", "rough surf", "hazardous surf"],
+  "high surf": ["heavy surf", "rough surf", "hazardous surf", "heavy rain/high surf", "heavy surf and wind", "heavy surf/high surf"],
   "high wind": ["non tstm wind", "non-tstm wind"],
   "hurricane (typhoon)": ["hurricane", "typhoon", "hurricane/typhoon"],
   "lake-effect snow": ["lake effect snow"],
   "storm surge/tide": ["storm surge"],
-  "strong wind": ["gusty wind", "gradient wind", "wind damage", "wind"],
-  "thunderstorm wind": ["tstm wind", "tstmw", "gustnado", "downburst", "microburst"],
+  "strong wind": ["gusty wind", "gradient wind", "wind damage", "wind","gusty wind/rain","gusty wind/hvy rain"],
+  "thunderstorm wind": ["tstm wind", "tstmw", "gustnado", "downburst", "microburst", "tstm wind/hail", "gusty wind/hail", "tstm wind and lightning"],
   "tornado": ["landspout"],
   "wildfire": ["wild fire", "grass fire", "forest fire", "brush fire"],
   "winter weather": ["freezing rain", "light snowfall", "snow and ice", "late season snow", "light snow", "snow", "freezing drizzle", "rain/snow", "snow squall", "mixed precipitation", "blowing snow", "wintry mix", "mixed precip", "snow squalls", "falling snow/ice", "cold and snow", "ice roads", "icy roads", "ice on roads"]
@@ -365,15 +358,13 @@ contained in the label and that keyword contains the keyword _A_.
 Once we have the keyword matches for a given label, we assign a type to the 
 label as follows:
 - If there is only one matching keyword, this determines the type
-- If there are multiple matching keywords, we select the best keyword using the
-function _selectBestKeyword()_ from the section 
-[Utility Functions](#utilityFunctions). This implementation is described below.
+- If there are multiple matching keywords, we throw an error. We should explicitly
+redirect any multiple matching label to a single type using the type aliases.
 - If there are no matching keywords, we create a keyword by enclosing 
 the label in double arrows, _<<_ and _>>_. We carry this data through
 our calculation and we can see if any of these form a significant portion of our
 data.
 
-# _selectBestKeyword()_ - This takes one of the types essentially at random. FIX!
 
 ``` {r}
 
@@ -413,11 +404,18 @@ getKeywords <- function(innerKeyFlags) {
 }
 labelKeywords <- apply(fixed_k_in_l,1,getKeywords)
 
+## This function is used below to select a keyword when there are multiple
+## matching keywords.
+selectBestKeyword <- function(label,keywords) {
+  #throw en error - use aliases to explicitly direct multiple matches
+  #so there should be no multiple matches
+  error("Label matching multiple keywords found!")
+}
+
 ## Here we make a map from the labels to the type
 ## - if the label contains one keyword (type or alias), we associate it with that type
-## - if the label contains multiple keywords (type or alias), we associate it with
-##   the fist keyword, with the idea the more damaging factor may likely be placed first. 
-##   (alternately other weightings could be attemted)
+## - if the label contains multiple keywords (type or alias), select a keyword
+## using the function selectBestKeyword, above.
 ## - it the label contains 0 or multiple keywords, we record the type as the 
 ## value of the label enclosed in double arrows, to flag a failed match.
 getKeywordTypes <- function(keywords,label) {
