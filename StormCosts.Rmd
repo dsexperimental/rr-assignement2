@@ -5,10 +5,6 @@ date: "2022-11-16"
 output: html_document
 ---
 
-# NOTES
-- Add a discussion of the type aliases in the supplemental data section
- 
-
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 
@@ -22,16 +18,17 @@ library(jsonlite)
 
 We examine the storm data file provided by the United States National Weather 
 Service to find the storm types that do the most total yearly damage in terms
-of fatalities, injuries and dollar damage.
+of fatalities, injuries and dollar cost damage.
 
-The storm data file includes storm events from 1950 until 2011, in the version 
-of the data used. We limited the data used to 1996 and later since the data 
-after that point is more complete and is more standardized. 
+The storm data file includes storm events from 1950 until 2011 in the version 
+of the data used. We limited the events to those between 1996, where the data
+quality increased, and the last complete year of data, since the storm types
+vary by time of year. 
 
-Even for this range, the type labeling for the data is inconsistent. The main 
-task in analyzing the file is interpreting the storm type. We used an 
-analysis to map the event type labels in the data set to the official storm
-type names used by the National Weather Service.
+The main task in analyzing the file is interpreting the storm type labels.
+We used keyword matching, using a curated list of keywords to help map the event 
+type labels to the official storm type names used by the National 
+Weather Service.
 
 We then summed the total fatalities, injuries and damage costs for each type and 
 averaged to estimate the yearly amounts.
@@ -43,7 +40,7 @@ injuries is _Tornado_, and dollar damage is _Flood_.
 
 We are processing storm data from the United States National Weather Service.
 
-## Source Data Used in Analysis
+### Source Data Used in Analysis
 
 National Weather Service Storm Data, 1950 to Nov, 2011:
 
@@ -61,11 +58,11 @@ There is updated storm data available from the National Weather Service website:
 
 https://www.ncdc.noaa.gov/stormevents/details.jsp
 
-## Utility Functions {#utilityFunctions}
+### Utility Functions {#utilityFunctions}
 
 The following are some simple functions that are used in the analysis. It is
 recommended that you skip this section and come back to it later for more
-information is desired
+information if desired
 
 ``` {r}
 ##=====================================
@@ -128,7 +125,7 @@ getContainedIn <- function(outerStrings,innerStrings) {
 }
 ```
 
-## Loading Data
+### Loading Data
 
 Here we read in the data from the NWS storm data file.
 
@@ -140,7 +137,7 @@ some unneeded columns, to limit the resources needed at load time.
 
 There is also a safety check to verify the format of the file is as expected.
 An error will be given if the format of the file does not match the expected
-format. If this is true, a number of names in the code will have to be udpated
+format. If this is true, a number of names in the code will have to be updated
 to run this document.
 
 ``` {r}
@@ -228,6 +225,10 @@ if(yday(maxDate) < PARTIAL_YEAR_CUTOFF) {
 
 ```
 
+### Data For Label Analysis
+
+Here we load the data we will use to identify the event type from the even label.
+
 In the analysis we use the official storm types from the National Weather 
 Service. The values were obtained from the latest version of the Storm Data
 documentation, July 26, 2021, obtained at the URL below.
@@ -268,7 +269,7 @@ The _typeAliases_ are a mapping with the key being the type name and the value
 being an array of alias values.
 
 The aliases to use were determined by iteratively completing the analysis and
-seeing examining the values that were matched. We entered this data in the form
+examining the values that were matched. We entered this data in the form
 of a json. It can be copied into a file and loaded from there rather than
 from the text entered below. This allows you to experiment with your own
 alias values.
@@ -295,21 +296,20 @@ typeAliasesJson <- '{
   "extreme cold/wind chill": ["extreme cold", "extreme wind chill", "extreme windchill"],
   "freezing fog": ["glaze"],
   "frost/freeze": ["frost", "freeze", "black ice"],
-  "flood": ["dam break"],
+  "flood": ["urban/sml stream fld", "dam break"],
   "flash flood": ["flash flood/flood", "flood/flash/flood"],
   "heat": ["unseasonably warm", "warm weather"],
-  "heavy rain": ["torrential rainfall", "urban/sml stream fld", "hvy rain", "rain", "unseasonal rain"],
+  "heavy rain": ["torrential rainfall", "hvy rain", "rain", "unseasonal rain"],
   "heavy snow": ["excessive snow"],
   "high surf": ["heavy surf", "rough surf", "hazardous surf", "heavy rain/high surf", "heavy surf and wind", "heavy surf/high surf"],
-  "high wind": ["non tstm wind", "non-tstm wind"],
+  "high wind": ["non tstm wind"],
   "hurricane (typhoon)": ["hurricane", "typhoon", "hurricane/typhoon"],
-  "lake-effect snow": ["lake effect snow"],
   "storm surge/tide": ["storm surge"],
   "strong wind": ["gusty wind", "gradient wind", "wind damage", "wind","gusty wind/rain","gusty wind/hvy rain"],
   "thunderstorm wind": ["tstm wind", "tstmw", "gustnado", "downburst", "microburst", "tstm wind/hail", "gusty wind/hail", "tstm wind and lightning"],
   "tornado": ["landspout"],
   "wildfire": ["wild fire", "grass fire", "forest fire", "brush fire"],
-  "winter weather": ["freezing rain", "light snowfall", "snow and ice", "late season snow", "light snow", "snow", "freezing drizzle", "rain/snow", "snow squall", "mixed precipitation", "blowing snow", "wintry mix", "mixed precip", "snow squalls", "falling snow/ice", "cold and snow", "ice roads", "icy roads", "ice on roads"]
+  "winter weather": ["freezing rain", "light snowfall", "snow and ice", "late season snow", "light snow", "snow", "freezing drizzle", "rain/snow", "snow squall", "mixed precipitation", "blowing snow", "wintry mix", "mixed precip", "snow squalls", "falling snow/ice", "cold and snow", "ice roads", "icy roads", "ice on roads", "ice on road"]
 }'
 typeAliases <- fromJSON(typeAliasesJson)
 
@@ -326,7 +326,7 @@ aliases <- names(aliasToType)
 ```
 
 For the analysis, we construct a _keywords_ vector. This includes the proper 
-type names and the alias name. 
+type names and the aliases. 
 
 Along with this, we create a mapping where the key is the keyword (type names
 and aliases) and the value is the associated type name. 
@@ -341,29 +341,45 @@ names(typeToType) <- types
 keywordToType <- c(typeToType,aliasToType)
 ```
 
-## Cleaning the Storm Type Labels
+### Identify Type from Event Labels
 
 Here we conduct an analysis to convert the labels on the storm data file into
 proper type names.
 
-We first find all keywords that are contained in each label. (Recall a keywords
+We first find all keywords that are contained in each label. (Recall keywords
 are composed of the proper type names and the type name aliases). 
 
 There are keywords that contain other keywords, such as _flash flood_ and _flood_.
 For cases like this, we only want to match the longer of the keyword, and not
 the keyword it contains. To account for this we remove any keyword _A_ from
 the list of keywords contained in the given label if a keyword _B_ is also 
-contained in the label and that keyword contains the keyword _A_.
+contained in that label and that keyword contains the keyword _A_.
 
 Once we have the keyword matches for a given label, we assign a type to the 
 label as follows:
 - If there is only one matching keyword, this determines the type
-- If there are multiple matching keywords, we throw an error. We should explicitly
-redirect any multiple matching label to a single type using the type aliases.
-- If there are no matching keywords, we create a keyword by enclosing 
-the label in double arrows, _<<_ and _>>_. We carry this data through
-our calculation and we can see if any of these form a significant portion of our
-data.
+- If there are no matching keywords, set the type as the label enclosed in 
+double arrows, _<<_ and _>>_. 
+- If there are multiple matching keywords, give a warning and set the type
+as the label enclosed in _<<_ and _-n>>_ where n is the number of matching
+keywords.
+
+Thus, we only assign a proper type in the case where a unique keyword is found for
+the label. Otherwise we assign an "improper" type, by embedding the label in
+arrow characters. We keep these values through our analysis so we can see if
+they are significant.
+
+For labels that do not get a proper type, if desired we can add 
+a new entry to the alias file to give a desired type mapping.
+
+One particular case of this we address is legitimate multiple matches, such as 
+"gusty wind/hail". By adding the alias we can explicitly assign it to a single
+selected type. An aid to doing this is to read the "REMARK" field to get an 
+idea of the actual reported damage from the storms.
+
+An alternate approach to handling these legitimate multiple matches would 
+be to fractionally map the event to each type, such as assigning a fractional 
+damage to each type based on the relative total damage done by those types.
 
 
 ``` {r}
@@ -404,26 +420,21 @@ getKeywords <- function(innerKeyFlags) {
 }
 labelKeywords <- apply(fixed_k_in_l,1,getKeywords)
 
-## This function is used below to select a keyword when there are multiple
-## matching keywords.
-selectBestKeyword <- function(label,keywords) {
-  #throw en error - use aliases to explicitly direct multiple matches
-  #so there should be no multiple matches
-  error("Label matching multiple keywords found!")
-}
-
 ## Here we make a map from the labels to the type
 ## - if the label contains one keyword (type or alias), we associate it with that type
-## - if the label contains multiple keywords (type or alias), select a keyword
-## using the function selectBestKeyword, above.
-## - it the label contains 0 or multiple keywords, we record the type as the 
-## value of the label enclosed in double arrows, to flag a failed match.
+## - if the label contains multiple keywords (type or alias), we record the type
+## as the value of the label in the format <<label-n>> where n is the number of
+## keywords matched. We also display a warning. The intention is that multiple
+## matches should be explicitly mapped to a type using aliases.
+## - it the label contains 0 or multiple keywords,  we record the type
+## as the value of the label in the format <<label>>, to show a failed match
 getKeywordTypes <- function(keywords,label) {
   if(length(keywords) == 1) {
     type <- keywordToType[[keywords[1]]]
   }
   else if(length(keywords) > 1) {
-    type <- keywordToType[[selectBestKeyword(label,keywords)]]
+    warning(sprintf("Label matching multiple keywords found: %s: %S",label,as.string(keywords)))
+    type <- sprintf("<<%s-%i>>",label,length(keywords))
   }
   else {
     type <- sprintf("<<%s>>",label)
@@ -438,7 +449,7 @@ labelToType <- mapply(getKeywordTypes,labelKeywords,label=names(labelKeywords),S
 dat$type <- factor(unlist(labelToType[dat$EVTYPE]))
 ```
 
-## Summing the Storm Damage
+### Summing the Storm Damage
 
 Here we calculate the yearly average costs for all storms over the period of
 the data.
@@ -491,7 +502,7 @@ costDat <- groupedDat %>%
 ```
 
 
-## Preprocessing of Results Data for Plots
+### Preprocessing of Results Data for Plots
 
 Here we do some preprocessing of the data to prepare it for plotting.
 
@@ -543,7 +554,7 @@ otherColor <- rgb(230,230,230,maxColorValue=255)
 
 # Results
 
-## Fatalities
+### Fatalities
 
 Here we show a plot of the storm types with the highest number of fatalities.
 
@@ -555,19 +566,19 @@ pie(redFatalitiesDat$fatalities,
     sub = sprintf("Total Average Yearly Fatalities: %.0f",aveYearlyFatalities))
 ```
 
-## Injuries
+### Injuries
 
 Here we show a plot of the storm types with the highest number of injuries.
 
 ``` {r, fig.height=6,fig.width=7}
 pie(redInjuriesDat$injuries,
     labels=sprintf("%s (%.0f)",redInjuriesDat$type,redInjuriesDat$injuries),
-    cex=0.75,init.angle=20,col=c(pal(length(redInjuriesDat$type)-1),otherColor),
+    cex=0.6,init.angle=20,col=c(pal(length(redInjuriesDat$type)-1),otherColor),
     main="Yearly Average Injuries by Storm Type",
     sub = sprintf("Total Average Yearly Injuries: %.0f",aveYearlyInjuries))
 ```
 
-## Damage Cost in Dollars
+### Damage Cost in Dollars
 
 Here we show a plot of the storm types with the greatest cost of damge.
 
@@ -581,36 +592,49 @@ pie(redCostDat$cost,
 
 # Supplemental Data {#supplementalData}
 
-INTRO?
+In this section we present some additional commentary and information, including 
+tables of the complete sets of the results.
 
-## Fatalities by Storm Type
+### General Remarks on Classification and Counting
 
-Here we present the complete table of fatalities by storm type.
+- The _REMARK_ field of the storm data file includes valuable information on the
+individual events. From this, it is evident the included labels are not always
+a good description of the actual event. It appears some of the type labels may
+have been generated from an automated analysis of these remarks. For more 
+accurate labels, it might be worthwhile reexamining the type labeld using the 
+_REMARK_ field.
+- In looking at the data, repeat events were found. We did not make an effort to 
+identify these. This is hoever another area that could be examined to get more
+accurate data.
+
+### Yearly Average Fatalities by Storm Type
+
+Here we present the complete table of yearly average fatalities by storm type.
 
 ``` {r}
 ## complete fatalities table
 print(fatalitiesDat,n=length(fatalitiesDat$type))
 ```
 
-## Injuries by Storm Type
+### Yearly Average Injuries by Storm Type
 
-Here we present the complete table of injuries by storm type.
+Here we present the complete table of yearly average injuries by storm type.
 
 ``` {r}
 ## complete injuries table
 print(injuriesDat,n=length(injuriesDat$type))
 ```
 
-## Damage Costs by Storm Type
+### Yearly Average Damage Costs by Storm Type
 
-Here we present the complete table of damage costs by storm type.
+Here we present the complete table of yearly average damage costs in dollars by storm type.
 
 ``` {r}
 ## complete cost table
 print(costDat,n=length(costDat$type))
 ```
 
-## Keyword Matching Analysis
+### Keyword Matching Analysis
 
 Here we present some of the event label matching results. This can be used when
 to check the aliases that were used, and see if some new aliases should be added
@@ -627,40 +651,94 @@ the storm data file.
 labelKeywordCounts <- sapply(labelKeywords,length)
 ```
 
-### Labels with no Keyword Matches
+##### Labels with no Keyword Matches
 
 ``` {r}
 ## labels with no keyword matches
 names(labelKeywords[labelKeywordCounts == 0])
 ```
 
-### Labels with One Keyword Match
+##### Labels with One Keyword Match
 
 ``` {r}
 ## labels with 1 keyword match
 names(labelKeywords[labelKeywordCounts == 1])
 ```
 
-### Labels with Two Keyword Matches
+##### Labels with Two or More Keyword Matches
+
+As part of our analysis, we explicitly added aliases to map any event labels 
+with multiple matching keywords to control how the event was mapped. 
+
+As stated in the document, other approaches could have been taken to map data
+from events labeled with multiple storm types.
 
 ``` {r}
 ## labels with 2 keyword matches
-names(labelKeywords[labelKeywordCounts == 2])
+names(labelKeywords[labelKeywordCounts >= 2])
 ```
+##### Notable Included Aliases
 
-### Labels with Three or More Keyword Matches
+Here we list some of our aliases that involved a judgement, as opposed to being
+alternate terms for a type.
 
-``` {r}
-## labels with 3 or more keyword matches
-names(labelKeywords[labelKeywordCounts >= 3])
-```
+Here we reference the storm types document, which can be obtained from
+https://www.nws.noaa.gov/directives/sym/pd01016005curr.pdf.
 
-## Type Data
+- _rain_, _unseasonal rain_  => _heavy rain_: It is unclear that rain should be qualified as heavy
+rain. The types description does not specify this. However we included it, 
+given the inexact usage of the type label.
+- _urban/sml stream fld_ => _flood_: This actually specified in the types document.
+In the latest version (2021) it specifies this should be classified as a _flood_,
+whereas some earlier versions specified this should go in the category of _heavy rain_.
+- _blowing dust_ => _dust storm_: It is unclear if blowing dust rises to the level
+to be called a storm, but as with rain vs heavy rain, we included it.
+- _ice roads_, _icy roads_, _ice on roads_, _ice on road_ - We assume that generically
+ice on roads was the result of precipitation, though it could be from other causes.
+- _glaze_ => _freezing fog_: Glaze typically forms from freezing fog, or a similar
+atmospheric effect.
+- _black ice_ => _frost/freeze_: - Black ice can form from moister on the ground
+or condensing from the air similar to glaze. We decided to map this to frost/freeze.
+- _dam break_ => _flood_: In the instances of this label the dam break led to 
+flooding, and was cause, at least partially, by flooding.
+- _coastal erosion_, _beach erosion_ - The erosion is typiclly casued by high surf.
+- _cold and snow_ => _winter weather_ - Cold and snowis technically two of the storm
+types but we labeled it as _winter weather_, the mildest form of snow, because
+cold is assumed to go with snow.
+
+The following are aliases the involve multiple storm types. In all these examples
+a judgement was made on the apparent predominant damage type from reading the
+_REMARK_ field of the storm data file. These are however cases where an alternate
+strategy could be justified, such as count a fraction of the damage on each included type.
+
+_gusty wind/rain_ => _strong wind_
+_gusty wind/hvy rain_ => _strong wind_
+_tstm wind/hail_ => _thunderstorm wind_
+_gusty wind/hail_ => _thunderstorm wind_
+_tstm wind and lightning_ => _thunderstorm wind_
+
+##### Notable Omitted labels
+
+- _thunderstorm_ - There was one event with this label, which actually corresponded
+to a snow storm.
+- _coastal storm_, _coastalstorm_ - Generically this could be many types of storms.
+In most but not all of the few cases here it corresponded to a winter storm.
+- _high water_ - This is an unclear term generically. In the examples included it
+corresponded to flooding of streams
+- _freezing spray_ - There is no proper category for this
+- _rough seas_, _high swells_, _heavy seas_, _high seas_, _rogue wave_ - There is no 
+category for this
+- _marine accident_ - Generically it is unclear of the cause for this.
+- _drowning_ - Generically it is unclear of the cause for this.
+- _astronomical high tide_ - There is no proper category for this
+- _other_ - Generically it is unclear of the cause for this. 
+
+### Type Data
 
 Below we print the official storm types and the type aliases used in the 
 analysis.
 
-### NWS Storm Types
+##### NWS Storm Types
 
 ``` {r}
 
@@ -669,7 +747,7 @@ print(officialTypes)
 
 ```
 
-### Storm Type Aliases
+##### Storm Type Aliases
 
 ``` {r}
 print(typeAliases)
