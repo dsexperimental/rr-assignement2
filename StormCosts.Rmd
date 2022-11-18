@@ -20,13 +20,12 @@ We examine the storm data file provided by the United States National Weather
 Service to find the storm types that do the most total yearly damage in terms
 of fatalities, injuries and dollar cost damage.
 
-The storm data file includes storm events from 1950 until 2011 in the version 
-of the data used. We limited the events to those between 1996, where the data
-quality increased, and the last complete year of data, since the storm types
-vary by time of year. 
+The storm data file used includes storm events from 1950 until 2011. We limited 
+the events to those between 1996, where the data quality increased, and the last 
+complete year of data, since the storm types vary by time of year. 
 
 The main task in analyzing the file is interpreting the storm type labels.
-We used keyword matching, using a curated list of keywords to help map the event 
+We did keyword matching using a curated list of keywords to help map the event 
 type labels to the official storm type names used by the National 
 Weather Service.
 
@@ -227,7 +226,7 @@ if(yday(maxDate) < PARTIAL_YEAR_CUTOFF) {
 
 ### Data For Label Analysis
 
-Here we load the data we will use to identify the event type from the even label.
+Here we load the data we will use to identify the event type from the event label.
 
 In the analysis we use the official storm types from the National Weather 
 Service. The values were obtained from the latest version of the Storm Data
@@ -356,30 +355,25 @@ the list of keywords contained in the given label if a keyword _B_ is also
 contained in that label and that keyword contains the keyword _A_.
 
 Once we have the keyword matches for a given label, we assign a type to the 
-label as follows:
-- If there is only one matching keyword, this determines the type
-- If there are no matching keywords, set the type as the label enclosed in 
-double arrows, _<<_ and _>>_. 
-- If there are multiple matching keywords, give a warning and set the type
-as the label enclosed in _<<_ and _-n>>_ where n is the number of matching
-keywords.
+label only if there is a unique keyword matching the label. 
 
-Thus, we only assign a proper type in the case where a unique keyword is found for
-the label. Otherwise we assign an "improper" type, by embedding the label in
-arrow characters. We keep these values through our analysis so we can see if
-they are significant.
+There are a small number of labels that match two storm types, such as 
+_gusty wind/hail_. For these cases we can add an explicit alias to match
+the storm to a single storm type. This was done manually, examining the
+_REMARK_ field of the events to see the reported damage for these events.
 
-For labels that do not get a proper type, if desired we can add 
-a new entry to the alias file to give a desired type mapping.
+An alternative approach not done is to assign this mixed storm
+type fractionally to both storms, such as in a ratio of the total damage of
+the two storm types.
 
-One particular case of this we address is legitimate multiple matches, such as 
-"gusty wind/hail". By adding the alias we can explicitly assign it to a single
-selected type. An aid to doing this is to read the "REMARK" field to get an 
-idea of the actual reported damage from the storms.
+The number of events which report multiple storm types is a very small portion 
+of the data.
 
-An alternate approach to handling these legitimate multiple matches would 
-be to fractionally map the event to each type, such as assigning a fractional 
-damage to each type based on the relative total damage done by those types.
+For any type that did not have a proper storm type mapped to it, we set the 
+storm type to be the label, enclosed in arrow characters, "<<" and ">>". For
+the cases of multiple matches, we also included the match multiplicity in the label.
+These values are carried through the calculation to see if they are a significant
+portion of the data.
 
 
 ``` {r}
@@ -454,6 +448,17 @@ dat$type <- factor(unlist(labelToType[dat$EVTYPE]))
 Here we calculate the yearly average costs for all storms over the period of
 the data.
 
+Inflation adjustment - It was unclear from the documentation if the dollar values
+had any inflation adjustment. When analyzing the data, events before 1996 fit
+to a line with positive slope, indicating the dollar value of the storm damage 
+increased over time, which could be due to inflation or peculiarities of the
+reported data. Examining the data after 1996, which is the data we used, the line 
+that fit the data was essentially flat. We use this as justification for not 
+doing any dollar adjustment. (The graphs of the line fit is omitted because 
+of a restriction to include at most three figures.) The St Louis Fed reports
+the inflation adjustment between 1196 and 2011 went from 72.7 to 94.3, measured 
+in 2012 dollars. (https://fred.stlouisfed.org/series/GDPDEF)
+
 ``` {r}
 ##===============================
 ## Get the total costs, fatalities and injuries
@@ -479,6 +484,7 @@ maximum to minimum, along with the average yearly number of events.
 
 Keep in mind we have previously filtered data to only consider events that have
 as least some fatalities, injuries or damage.
+
 
 ``` {r}
 
@@ -584,7 +590,7 @@ Here we show a plot of the storm types with the greatest cost of damge.
 
 ``` {r, fig.height=6,fig.width=7}
 pie(redCostDat$cost,
-    labels=sprintf("%s $%.1fB",redCostDat$type,redCostDat$cost/1000000000),
+    labels=sprintf("%s $%.2fB",redCostDat$type,redCostDat$cost/1000000000),
     cex=0.75,init.angle=20,col=c(pal(length(redCostDat$type)-1),otherColor),
     main="Yearly Average Damage Cost in Dollars by Storm Type",
     sub = sprintf("Total Average Yearly Cost: $%.1fB",aveYearlyCost/1000000000))
@@ -601,11 +607,16 @@ tables of the complete sets of the results.
 individual events. From this, it is evident the included labels are not always
 a good description of the actual event. It appears some of the type labels may
 have been generated from an automated analysis of these remarks. For more 
-accurate labels, it might be worthwhile reexamining the type labeld using the 
+accurate labels, it might be worthwhile reexamining the type label using the 
 _REMARK_ field.
 - In looking at the data, repeat events were found. We did not make an effort to 
 identify these. This is hoever another area that could be examined to get more
 accurate data.
+- As stated in the main writeup, we assigned all storms to a single storm type,
+although some storms were labeled as multiple types. When assessing damage by
+type, this is another place an improvement could be made. This should most 
+likely be done in conjunction with the above mentioned analysis of the _REMARK_
+field.
 
 ### Yearly Average Fatalities by Storm Type
 
@@ -637,7 +648,7 @@ print(costDat,n=length(costDat$type))
 ### Keyword Matching Analysis
 
 Here we present some of the event label matching results. This can be used when
-to check the aliases that were used, and see if some new aliases should be added
+checking the aliases to see if some new aliases should be added
 or if some should be removed.
 
 We also include some commentary on the aliases we chose to include and not
@@ -679,31 +690,32 @@ names(labelKeywords[labelKeywordCounts >= 2])
 ```
 ##### Notable Included Aliases
 
-Here we list some of our aliases that involved a judgement, as opposed to being
-alternate terms for a type.
+Here we list some of our aliases that involved a judgement, as opposed to those
+that were simple alternate terms for a given type.
 
 Here we reference the storm types document, which can be obtained from
 https://www.nws.noaa.gov/directives/sym/pd01016005curr.pdf.
 
 - _rain_, _unseasonal rain_  => _heavy rain_: It is unclear that rain should be qualified as heavy
-rain. The types description does not specify this. However we included it, 
-given the inexact usage of the type label.
+rain. The types description does not specify they should. However we included it, 
+given the inexact usage of the type label in the event data.
 - _urban/sml stream fld_ => _flood_: This actually specified in the types document.
 In the latest version (2021) it specifies this should be classified as a _flood_,
 whereas some earlier versions specified this should go in the category of _heavy rain_.
 - _blowing dust_ => _dust storm_: It is unclear if blowing dust rises to the level
 to be called a storm, but as with rain vs heavy rain, we included it.
 - _ice roads_, _icy roads_, _ice on roads_, _ice on road_ - We assume that generically
-ice on roads was the result of precipitation, though it could be from other causes.
+ice on roads was the result of current or past precipitation, though it could be 
+from other causes.
 - _glaze_ => _freezing fog_: Glaze typically forms from freezing fog, or a similar
 atmospheric effect.
-- _black ice_ => _frost/freeze_: - Black ice can form from moister on the ground
+- _black ice_ => _frost/freeze_: - Black ice can form from moisture on the ground
 or condensing from the air similar to glaze. We decided to map this to frost/freeze.
-- _dam break_ => _flood_: In the instances of this label the dam break led to 
-flooding, and was cause, at least partially, by flooding.
-- _coastal erosion_, _beach erosion_ - The erosion is typiclly casued by high surf.
-- _cold and snow_ => _winter weather_ - Cold and snowis technically two of the storm
-types but we labeled it as _winter weather_, the mildest form of snow, because
+- _dam break_ => _flood_: In the instances of this label, the dam break led to 
+flooding, and was also caused, at least partially, by flooding.
+- _coastal erosion_, _beach erosion_ - The erosion is typically caused by high surf.
+- _cold and snow_ => _winter weather_ - Cold and snow is technically two of the storm
+types but we labeled it as _winter weather_, the mildest form of snow here, because
 cold is assumed to go with snow.
 
 The following are aliases the involve multiple storm types. In all these examples
